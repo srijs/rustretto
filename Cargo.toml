@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "crates/classfile",
+  "crates/jar",
+
+  "tools/javap"
+]

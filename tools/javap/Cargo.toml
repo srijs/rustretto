@@ -1,0 +1,11 @@
+[package]
+name = "javap"
+version = "0.1.0"
+authors = ["Sam Rijs <srijs@airpost.net>"]
+
+[dependencies]
+failure = "0.1.2"
+structopt = "0.2.11"
+
+[dependencies.classfile]
+path = "../../crates/classfile"
