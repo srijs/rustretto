@@ -9,7 +9,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use classfile::{instructions::Instr, ClassFile};
+use classfile::{attrs, instructions::Instr, ClassFile};
 use failure::Fallible;
 use structopt::StructOpt;
 
@@ -179,9 +179,9 @@ fn analyze(opt: Opt) -> Fallible<()> {
     );
     println!("  MD5 checksum {:x}", compute_md5(&opt.input)?);
 
-    let source_file = cf.attributes.get_source_file().unwrap();
+    let source_file = cf.attributes.get::<attrs::SourceFile>().unwrap();
 
-    println!("  Compiled from {:?}", source_file);
+    println!("  Compiled from {:?}", source_file.as_str());
 
     let access_flags = cf.access_flags;
     if access_flags.contains(classfile::ClassAccessFlags::PUBLIC) {
@@ -220,7 +220,7 @@ fn analyze(opt: Opt) -> Fallible<()> {
         );
         println!("  {}", formatted_method);
 
-        if let Some(code) = method.attributes.get_code() {
+        if let Ok(code) = method.attributes.get::<attrs::Code>() {
             let mut args_size = method.descriptor.params.len();
             let method_name = cf.constant_pool.get_utf8(method.name_index).unwrap();
             if method_name == "<init>" {
@@ -231,7 +231,7 @@ fn analyze(opt: Opt) -> Fallible<()> {
                 "      stack={}, locals={}, args_size={}",
                 code.max_stack, code.max_locals, args_size
             );
-            let mut instructions = code.decode();
+            let mut instructions = code.disassemble();
             while let Some((ipos, instr)) = instructions.decode_next()? {
                 println!(
                     "    {:>4}: {}",
@@ -240,7 +240,7 @@ fn analyze(opt: Opt) -> Fallible<()> {
                 );
             }
 
-            if let Some(stack_map_table) = code.attributes.get_stack_map_table() {
+            if let Ok(stack_map_table) = code.attributes.get::<attrs::StackMapTable>() {
                 println!("    StackMapTable: {:?}", stack_map_table);
             }
         }
@@ -248,7 +248,7 @@ fn analyze(opt: Opt) -> Fallible<()> {
 
     println!("}}");
 
-    println!("SourceFile: {:?}", source_file);
+    println!("SourceFile: {:?}", source_file.as_str());
 
     Ok(())
 }
