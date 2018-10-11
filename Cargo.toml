@@ -3,5 +3,5 @@ members = [
   "crates/classfile",
   "crates/jar",
 
-  "tools/javap"
+  "tools/javapv"
 ]

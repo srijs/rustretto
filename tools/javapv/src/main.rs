@@ -1,10 +1,13 @@
+extern crate chrono;
 extern crate classfile;
 extern crate failure;
+extern crate md5;
 #[macro_use]
 extern crate structopt;
 
 use std::fs;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use classfile::{instructions::Instr, ClassFile};
 use failure::Fallible;
@@ -141,22 +144,44 @@ fn format_method(
     out.push(';');
 }
 
+fn compute_md5<P: AsRef<Path>>(path: P) -> Fallible<md5::Digest> {
+    let mut file = fs::File::open(path.as_ref())?;
+    let mut ctx = md5::Context::new();
+    let mut buffer = [0u8; 1024];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n > 0 {
+            ctx.consume(&buffer[..n]);
+        } else {
+            break;
+        }
+    }
+    Ok(ctx.into())
+}
+
 #[derive(Debug, StructOpt)]
-#[structopt(name = "javap")]
+#[structopt(name = "javapv")]
 struct Opt {
-    #[structopt(short = "c")]
-    disassemble: bool,
     #[structopt(parse(from_os_str))]
     input: PathBuf,
 }
 
 fn analyze(opt: Opt) -> Fallible<()> {
-    let file = fs::File::open(opt.input)?;
+    let metadata = opt.input.metadata()?;
+    let file = fs::File::open(&opt.input)?;
     let cf = ClassFile::parse(file)?;
+
+    println!("Classfile {}", opt.input.canonicalize()?.display());
+    println!(
+        "  Last modified {}; size {} bytes",
+        chrono::DateTime::<chrono::Local>::from(metadata.modified()?).format("%d/%m/%Y"),
+        metadata.len()
+    );
+    println!("  MD5 checksum {:x}", compute_md5(&opt.input)?);
 
     let source_file = cf.attributes.get_source_file().unwrap();
 
-    println!("Compiled from {:?}", source_file);
+    println!("  Compiled from {:?}", source_file);
 
     let access_flags = cf.access_flags;
     if access_flags.contains(classfile::ClassAccessFlags::PUBLIC) {
@@ -166,10 +191,23 @@ fn analyze(opt: Opt) -> Fallible<()> {
     let this_class = cf.get_this_class();
     let this_class_name = cf.constant_pool.get_utf8(this_class.name_index).unwrap();
 
-    println!("class {} {{", this_class_name);
+    println!("class {}", this_class_name);
+    println!("  minor version: {}", cf.version.minor);
+    println!("  major version: {}", cf.version.major);
+
+    println!("Constant pool:");
+    for idx in cf.constant_pool.indices() {
+        println!(
+            "{:>5} = {}",
+            format!("#{}", idx.as_u16()),
+            format_constant(idx.as_u16(), &cf.constant_pool)
+        )
+    }
+
+    println!("{{");
 
     for (i, method) in cf.methods.iter().enumerate() {
-        if i > 0 && opt.disassemble {
+        if i > 0 {
             println!("");
         }
 
@@ -182,21 +220,30 @@ fn analyze(opt: Opt) -> Fallible<()> {
         );
         println!("  {}", formatted_method);
 
-        if opt.disassemble {
-            println!("    Code:");
-            let code = method.attributes.get_code().unwrap();
-            let mut instructions = code.decode();
-            while let Some((ipos, instr)) = instructions.decode_next()? {
-                println!(
-                    "    {:>4}: {}",
-                    ipos,
-                    format_instr(ipos, &instr, &cf.constant_pool)
-                );
-            }
+        let code = method.attributes.get_code().unwrap();
+        let mut args_size = method.descriptor.params.len();
+        let method_name = cf.constant_pool.get_utf8(method.name_index).unwrap();
+        if method_name == "<init>" {
+            args_size += 1;
+        }
+        println!("    Code:");
+        println!(
+            "      stack={}, locals={}, args_size={}",
+            code.max_stack, code.max_locals, args_size
+        );
+        let mut instructions = code.decode();
+        while let Some((ipos, instr)) = instructions.decode_next()? {
+            println!(
+                "    {:>4}: {}",
+                ipos,
+                format_instr(ipos, &instr, &cf.constant_pool)
+            );
         }
     }
 
     println!("}}");
+
+    println!("SourceFile: {:?}", source_file);
 
     Ok(())
 }

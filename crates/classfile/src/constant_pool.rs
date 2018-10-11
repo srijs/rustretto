@@ -37,6 +37,10 @@ impl ConstantPool {
         Ok(ConstantPool { vec: vec.into() })
     }
 
+    pub fn indices(&self) -> impl Iterator<Item = ConstantIndex> {
+        (1..=self.vec.len()).map(|i| ConstantIndex(i as u16))
+    }
+
     pub fn get_info(&self, idx: ConstantIndex) -> Option<&Constant> {
         if idx.0 > 0 {
             self.vec.get(idx.0 as usize - 1)
