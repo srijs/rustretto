@@ -1,5 +1,3 @@
-use std::iter::ExactSizeIterator;
-
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
@@ -52,13 +50,7 @@ impl<'a> Iterator for Entries<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.count as usize, Some(self.count as usize))
-    }
-}
-
-impl<'a> ExactSizeIterator for Entries<'a> {
-    fn len(&self) -> usize {
-        self.count as usize
+        (0, Some(self.count as usize))
     }
 }
 

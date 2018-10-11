@@ -166,6 +166,18 @@ struct Opt {
     input: PathBuf,
 }
 
+macro_rules! try_next {
+    ($iter:expr) => {{
+        match $iter.next() {
+            None => None,
+            Some(Ok(item)) => Some(item),
+            Some(Err(err)) => {
+                return Err(err);
+            }
+        }
+    }};
+}
+
 fn analyze(opt: Opt) -> Fallible<()> {
     let metadata = opt.input.metadata()?;
     let file = fs::File::open(&opt.input)?;
@@ -245,7 +257,8 @@ fn analyze(opt: Opt) -> Fallible<()> {
                     "    StackMapTable: number_of_entries = {}",
                     stack_map_table.len()
                 );
-                for entry in stack_map_table.entries() {
+                let mut stack_map_frames = stack_map_table.entries();
+                while let Some(entry) = try_next!(stack_map_frames) {
                     println!("      {:?}", entry);
                 }
             }

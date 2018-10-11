@@ -70,13 +70,7 @@ impl<'a> Iterator for ExceptionHandlers<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.len as usize, Some(self.len as usize))
-    }
-}
-
-impl<'a> ExactSizeIterator for ExceptionHandlers<'a> {
-    fn len(&self) -> usize {
-        self.len as usize
+        (0, Some(self.len as usize))
     }
 }
 
