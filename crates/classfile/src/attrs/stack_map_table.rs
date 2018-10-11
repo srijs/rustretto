@@ -2,7 +2,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
 use super::super::{ConstantIndex, ConstantPool};
-use super::Attribute;
+use super::{private, Attribute, RawAttribute};
 
 #[derive(Debug)]
 pub struct StackMapTable<'a> {
@@ -23,10 +23,13 @@ impl<'a> StackMapTable<'a> {
     }
 }
 
+impl<'a> private::Sealed for StackMapTable<'a> {}
+
 impl<'a> Attribute<'a> for StackMapTable<'a> {
     const NAME: &'static str = "StackMapTable";
 
-    fn decode(mut bytes: &'a [u8], _consts: &ConstantPool) -> Fallible<Self> {
+    fn decode(raw: RawAttribute<'a>, _consts: &ConstantPool) -> Fallible<Self> {
+        let mut bytes = raw.bytes.as_ref();
         let count = bytes.read_u16::<BigEndian>()?;
         Ok(StackMapTable { count, bytes })
     }

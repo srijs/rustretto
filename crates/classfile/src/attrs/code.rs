@@ -3,7 +3,7 @@ use failure::Fallible;
 
 use super::super::instructions::Disassembler;
 use super::super::{ConstantIndex, ConstantPool};
-use super::{Attribute, Attributes};
+use super::{private, Attribute, Attributes, RawAttribute};
 
 #[derive(Debug)]
 pub struct Code<'a> {
@@ -28,10 +28,13 @@ impl<'a> Code<'a> {
     }
 }
 
+impl<'a> private::Sealed for Code<'a> {}
+
 impl<'a> Attribute<'a> for Code<'a> {
     const NAME: &'static str = "Code";
 
-    fn decode(mut bytes: &'a [u8], consts: &ConstantPool) -> Fallible<Self> {
+    fn decode(raw: RawAttribute<'a>, consts: &ConstantPool) -> Fallible<Self> {
+        let mut bytes = raw.bytes.as_ref();
         let max_stack = bytes.read_u16::<BigEndian>()?;
         let max_locals = bytes.read_u16::<BigEndian>()?;
         let code_len = bytes.read_u32::<BigEndian>()?;

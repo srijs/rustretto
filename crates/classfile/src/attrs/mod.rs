@@ -39,24 +39,40 @@ impl Attributes {
     where
         A: Attribute<'a>,
     {
-        if let Some(bytes) = self.attrs.get(A::NAME) {
-            A::decode(bytes, &self.consts)
+        if let Some(raw) = self.get_raw(A::NAME) {
+            A::decode(raw, &self.consts)
         } else {
             bail!("attribute {} does not exist", A::NAME)
         }
     }
 
-    pub fn get_raw(&self, name: &str) -> Option<&[u8]> {
-        self.attrs.get(name).map(|bytes| bytes.as_slice())
+    pub fn get_raw(&self, name: &str) -> Option<RawAttribute> {
+        self.attrs
+            .get(name)
+            .map(|bytes| RawAttribute { bytes: &bytes })
     }
 }
 
-pub trait Attribute<'a> {
+mod private {
+    pub trait Sealed {}
+}
+
+pub trait Attribute<'a>: private::Sealed {
     const NAME: &'static str;
 
-    fn decode(bytes: &'a [u8], consts: &ConstantPool) -> Fallible<Self>
+    fn decode(raw: RawAttribute<'a>, consts: &ConstantPool) -> Fallible<Self>
     where
         Self: Sized;
+}
+
+pub struct RawAttribute<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> AsRef<[u8]> for RawAttribute<'a> {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 #[derive(Debug)]
@@ -64,11 +80,13 @@ pub struct ConstantValue {
     pub value_index: ConstantIndex,
 }
 
+impl private::Sealed for ConstantValue {}
+
 impl<'a> Attribute<'a> for ConstantValue {
     const NAME: &'static str = "ConstantValue";
 
-    fn decode(bytes: &'a [u8], _consts: &ConstantPool) -> Fallible<Self> {
-        let value_index = ConstantIndex::parse(bytes)?;
+    fn decode(raw: RawAttribute<'a>, _consts: &ConstantPool) -> Fallible<Self> {
+        let value_index = ConstantIndex::parse(raw.as_ref())?;
         Ok(ConstantValue { value_index })
     }
 }
@@ -89,11 +107,13 @@ impl SourceFile {
     }
 }
 
+impl private::Sealed for SourceFile {}
+
 impl<'a> Attribute<'a> for SourceFile {
     const NAME: &'static str = "SourceFile";
 
-    fn decode(bytes: &'a [u8], consts: &ConstantPool) -> Fallible<Self> {
-        let index = ConstantIndex::parse(bytes)?;
+    fn decode(raw: RawAttribute<'a>, consts: &ConstantPool) -> Fallible<Self> {
+        let index = ConstantIndex::parse(raw.as_ref())?;
         Ok(SourceFile {
             index,
             consts: consts.clone(),
@@ -106,10 +126,13 @@ pub struct LineNumberTable {
     pub entries: Vec<LineNumberTableEntry>,
 }
 
+impl private::Sealed for LineNumberTable {}
+
 impl<'a> Attribute<'a> for LineNumberTable {
     const NAME: &'static str = "LineNumberTable";
 
-    fn decode(mut bytes: &'a [u8], _consts: &ConstantPool) -> Fallible<Self> {
+    fn decode(raw: RawAttribute<'a>, _consts: &ConstantPool) -> Fallible<Self> {
+        let mut bytes = raw.as_ref();
         let len = bytes.read_u16::<BigEndian>()?;
         let mut entries = Vec::with_capacity(len as usize);
         for _ in 0..len {
