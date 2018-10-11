@@ -3,45 +3,46 @@ use failure::Fallible;
 
 use super::super::{ConstantIndex, ConstantPool};
 use super::{private, Attribute, RawAttribute};
+use ByteBuf;
 
 #[derive(Debug)]
-pub struct StackMapTable<'a> {
+pub struct StackMapTable {
     count: u16,
-    bytes: &'a [u8],
+    bytes: ByteBuf,
 }
 
-impl<'a> StackMapTable<'a> {
+impl StackMapTable {
     pub fn len(&self) -> u16 {
         self.count
     }
 
-    pub fn entries(&self) -> Entries<'a> {
+    pub fn entries(&self) -> Entries {
         Entries {
             count: self.count,
-            bytes: self.bytes,
+            bytes: self.bytes.clone(),
         }
     }
 }
 
-impl<'a> private::Sealed for StackMapTable<'a> {}
+impl private::Sealed for StackMapTable {}
 
-impl<'a> Attribute<'a> for StackMapTable<'a> {
+impl Attribute for StackMapTable {
     const NAME: &'static str = "StackMapTable";
 
-    fn decode(raw: RawAttribute<'a>, _consts: &ConstantPool) -> Fallible<Self> {
-        let mut bytes = raw.bytes.as_ref();
+    fn decode(raw: RawAttribute, _consts: &ConstantPool) -> Fallible<Self> {
+        let mut bytes = raw.bytes;
         let count = bytes.read_u16::<BigEndian>()?;
         Ok(StackMapTable { count, bytes })
     }
 }
 
 #[derive(Debug)]
-pub struct Entries<'a> {
+pub struct Entries {
     count: u16,
-    bytes: &'a [u8],
+    bytes: ByteBuf,
 }
 
-impl<'a> Iterator for Entries<'a> {
+impl Iterator for Entries {
     type Item = Fallible<Entry>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -101,7 +102,7 @@ pub enum VerificationTypeInfo {
     Uninitialized(u16),
 }
 
-fn parse_verification_type_info(mut bytes: &[u8]) -> Fallible<VerificationTypeInfo> {
+fn parse_verification_type_info(bytes: &mut ByteBuf) -> Fallible<VerificationTypeInfo> {
     match bytes.read_u8()? {
         0 => Ok(VerificationTypeInfo::Top),
         1 => Ok(VerificationTypeInfo::Integer),
@@ -118,7 +119,7 @@ fn parse_verification_type_info(mut bytes: &[u8]) -> Fallible<VerificationTypeIn
     }
 }
 
-fn parse_stack_map_table_entry(mut bytes: &[u8]) -> Fallible<Entry> {
+fn parse_stack_map_table_entry(bytes: &mut ByteBuf) -> Fallible<Entry> {
     let frame_type = bytes.read_u8()?;
     if frame_type <= 63 {
         Ok(Entry::SameFrame {
@@ -151,7 +152,7 @@ fn parse_stack_map_table_entry(mut bytes: &[u8]) -> Fallible<Entry> {
         let k = frame_type - 251;
         let mut locals = Vec::with_capacity(k as usize);
         for _ in 0..k {
-            locals.push(parse_verification_type_info(&mut bytes)?);
+            locals.push(parse_verification_type_info(bytes)?);
         }
         Ok(Entry::AppendFrame {
             offset_delta,
@@ -162,12 +163,12 @@ fn parse_stack_map_table_entry(mut bytes: &[u8]) -> Fallible<Entry> {
         let number_of_locals = bytes.read_u16::<BigEndian>()?;
         let mut locals = Vec::with_capacity(number_of_locals as usize);
         for _ in 0..number_of_locals {
-            locals.push(parse_verification_type_info(&mut bytes)?);
+            locals.push(parse_verification_type_info(bytes)?);
         }
         let number_of_stack_items = bytes.read_u16::<BigEndian>()?;
         let mut stack_items = Vec::with_capacity(number_of_stack_items as usize);
         for _ in 0..number_of_stack_items {
-            stack_items.push(parse_verification_type_info(&mut bytes)?);
+            stack_items.push(parse_verification_type_info(bytes)?);
         }
         Ok(Entry::FullFrame {
             offset_delta,

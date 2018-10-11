@@ -4,45 +4,50 @@ use failure::Fallible;
 use super::super::instructions::Disassembler;
 use super::super::{ConstantIndex, ConstantPool};
 use super::{private, Attribute, Attributes, RawAttribute};
+use ByteBuf;
 
 #[derive(Debug)]
-pub struct Code<'a> {
+pub struct Code {
     pub max_stack: u16,
     pub max_locals: u16,
-    pub code: &'a [u8],
+    code: ByteBuf,
     pub exception_table_len: u16,
-    pub exception_table: &'a [u8],
+    exception_table: ByteBuf,
     pub attributes: Attributes,
 }
 
-impl<'a> Code<'a> {
-    pub fn disassemble(&self) -> Disassembler<'a> {
-        Disassembler::new(&self.code)
+impl Code {
+    pub fn bytecode(&self) -> &[u8] {
+        self.code.as_ref()
     }
 
-    pub fn exception_handlers(&self) -> ExceptionHandlers<'a> {
+    pub fn disassemble(&self) -> Disassembler {
+        Disassembler::new(self.code.clone())
+    }
+
+    pub fn exception_handlers(&self) -> ExceptionHandlers {
         ExceptionHandlers {
             len: self.exception_table_len,
-            bytes: self.exception_table,
+            bytes: self.exception_table.clone(),
         }
     }
 }
 
-impl<'a> private::Sealed for Code<'a> {}
+impl private::Sealed for Code {}
 
-impl<'a> Attribute<'a> for Code<'a> {
+impl Attribute for Code {
     const NAME: &'static str = "Code";
 
-    fn decode(raw: RawAttribute<'a>, consts: &ConstantPool) -> Fallible<Self> {
-        let mut bytes = raw.bytes.as_ref();
+    fn decode(raw: RawAttribute, consts: &ConstantPool) -> Fallible<Self> {
+        let mut bytes = raw.bytes;
         let max_stack = bytes.read_u16::<BigEndian>()?;
         let max_locals = bytes.read_u16::<BigEndian>()?;
         let code_len = bytes.read_u32::<BigEndian>()?;
-        let (code, mut bytes) = bytes.split_at(code_len as usize);
+        let code = bytes.split_to(code_len as usize);
         let exception_table_len = bytes.read_u16::<BigEndian>()?;
         let exception_table_len_in_bytes =
             exception_table_len as usize * ::std::mem::size_of::<[u16; 4]>();
-        let (exception_table, mut bytes) = bytes.split_at(exception_table_len_in_bytes);
+        let exception_table = bytes.split_to(exception_table_len_in_bytes);
         let attributes = Attributes::parse(&mut bytes, consts)?;
         Ok(Code {
             max_stack,
@@ -56,12 +61,12 @@ impl<'a> Attribute<'a> for Code<'a> {
 }
 
 #[derive(Debug)]
-pub struct ExceptionHandlers<'a> {
+pub struct ExceptionHandlers {
     len: u16,
-    bytes: &'a [u8],
+    bytes: ByteBuf,
 }
 
-impl<'a> Iterator for ExceptionHandlers<'a> {
+impl Iterator for ExceptionHandlers {
     type Item = Fallible<ExceptionHandler>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -85,11 +90,11 @@ pub struct ExceptionHandler {
     pub catch_type: ConstantIndex,
 }
 
-fn parse_exception_handler(mut bytes: &[u8]) -> Fallible<ExceptionHandler> {
+fn parse_exception_handler(bytes: &mut ByteBuf) -> Fallible<ExceptionHandler> {
     let start_pc = bytes.read_u16::<BigEndian>()?;
     let end_pc = bytes.read_u16::<BigEndian>()?;
     let handler_pc = bytes.read_u16::<BigEndian>()?;
-    let catch_type = ConstantIndex::parse(&mut bytes)?;
+    let catch_type = ConstantIndex::parse(bytes)?;
     Ok(ExceptionHandler {
         start_pc,
         end_pc,

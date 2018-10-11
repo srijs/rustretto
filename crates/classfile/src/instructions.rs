@@ -3,6 +3,8 @@ use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
+use ByteBuf;
+
 #[derive(Clone, Debug)]
 pub enum Instr {
     AaLoad,
@@ -188,12 +190,12 @@ pub enum Instr {
     WideIInc(u16, i16),
 }
 
-pub struct Disassembler<'a> {
-    code: Cursor<&'a [u8]>,
+pub struct Disassembler {
+    code: Cursor<ByteBuf>,
 }
 
-impl<'a> Disassembler<'a> {
-    pub(crate) fn new(code: &'a [u8]) -> Self {
+impl Disassembler {
+    pub(crate) fn new(code: ByteBuf) -> Self {
         Disassembler {
             code: Cursor::new(code),
         }

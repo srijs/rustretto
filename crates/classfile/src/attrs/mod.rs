@@ -5,6 +5,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
 use super::{ConstantIndex, ConstantPool};
+use ByteBuf;
 
 pub mod code;
 pub use self::code::Code;
@@ -13,7 +14,7 @@ pub use self::stack_map_table::StackMapTable;
 
 #[derive(Debug)]
 pub struct Attributes {
-    attrs: HashMap<String, Vec<u8>>,
+    attrs: HashMap<String, ByteBuf>,
     consts: ConstantPool,
 }
 
@@ -27,7 +28,7 @@ impl Attributes {
             let len = reader.read_u32::<BigEndian>()?;
             let mut info = vec![0u8; len as usize];
             reader.read_exact(&mut info)?;
-            attrs.insert(name.into(), info);
+            attrs.insert(name.into(), info.into());
         }
         Ok(Attributes {
             attrs,
@@ -35,9 +36,9 @@ impl Attributes {
         })
     }
 
-    pub fn get<'a, A>(&'a self) -> Fallible<A>
+    pub fn get<A>(&self) -> Fallible<A>
     where
-        A: Attribute<'a>,
+        A: Attribute,
     {
         if let Some(raw) = self.get_raw(A::NAME) {
             A::decode(raw, &self.consts)
@@ -47,9 +48,9 @@ impl Attributes {
     }
 
     pub fn get_raw(&self, name: &str) -> Option<RawAttribute> {
-        self.attrs
-            .get(name)
-            .map(|bytes| RawAttribute { bytes: &bytes })
+        self.attrs.get(name).map(|bytes| RawAttribute {
+            bytes: bytes.clone(),
+        })
     }
 }
 
@@ -57,21 +58,21 @@ mod private {
     pub trait Sealed {}
 }
 
-pub trait Attribute<'a>: private::Sealed {
+pub trait Attribute: private::Sealed {
     const NAME: &'static str;
 
-    fn decode(raw: RawAttribute<'a>, consts: &ConstantPool) -> Fallible<Self>
+    fn decode(raw: RawAttribute, consts: &ConstantPool) -> Fallible<Self>
     where
         Self: Sized;
 }
 
-pub struct RawAttribute<'a> {
-    bytes: &'a [u8],
+pub struct RawAttribute {
+    pub(crate) bytes: ByteBuf,
 }
 
-impl<'a> AsRef<[u8]> for RawAttribute<'a> {
+impl AsRef<[u8]> for RawAttribute {
     fn as_ref(&self) -> &[u8] {
-        &self.bytes
+        self.bytes.as_ref()
     }
 }
 
@@ -82,10 +83,10 @@ pub struct ConstantValue {
 
 impl private::Sealed for ConstantValue {}
 
-impl<'a> Attribute<'a> for ConstantValue {
+impl Attribute for ConstantValue {
     const NAME: &'static str = "ConstantValue";
 
-    fn decode(raw: RawAttribute<'a>, _consts: &ConstantPool) -> Fallible<Self> {
+    fn decode(raw: RawAttribute, _consts: &ConstantPool) -> Fallible<Self> {
         let value_index = ConstantIndex::parse(raw.as_ref())?;
         Ok(ConstantValue { value_index })
     }
@@ -109,10 +110,10 @@ impl SourceFile {
 
 impl private::Sealed for SourceFile {}
 
-impl<'a> Attribute<'a> for SourceFile {
+impl Attribute for SourceFile {
     const NAME: &'static str = "SourceFile";
 
-    fn decode(raw: RawAttribute<'a>, consts: &ConstantPool) -> Fallible<Self> {
+    fn decode(raw: RawAttribute, consts: &ConstantPool) -> Fallible<Self> {
         let index = ConstantIndex::parse(raw.as_ref())?;
         Ok(SourceFile {
             index,
@@ -128,10 +129,10 @@ pub struct LineNumberTable {
 
 impl private::Sealed for LineNumberTable {}
 
-impl<'a> Attribute<'a> for LineNumberTable {
+impl Attribute for LineNumberTable {
     const NAME: &'static str = "LineNumberTable";
 
-    fn decode(raw: RawAttribute<'a>, _consts: &ConstantPool) -> Fallible<Self> {
+    fn decode(raw: RawAttribute, _consts: &ConstantPool) -> Fallible<Self> {
         let mut bytes = raw.as_ref();
         let len = bytes.read_u16::<BigEndian>()?;
         let mut entries = Vec::with_capacity(len as usize);
