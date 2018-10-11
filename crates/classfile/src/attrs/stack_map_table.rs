@@ -34,6 +34,7 @@ impl<'a> Attribute<'a> for StackMapTable<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct Entries<'a> {
     count: u16,
     bytes: &'a [u8],
