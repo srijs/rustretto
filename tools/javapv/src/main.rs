@@ -220,24 +220,29 @@ fn analyze(opt: Opt) -> Fallible<()> {
         );
         println!("  {}", formatted_method);
 
-        let code = method.attributes.get_code().unwrap();
-        let mut args_size = method.descriptor.params.len();
-        let method_name = cf.constant_pool.get_utf8(method.name_index).unwrap();
-        if method_name == "<init>" {
-            args_size += 1;
-        }
-        println!("    Code:");
-        println!(
-            "      stack={}, locals={}, args_size={}",
-            code.max_stack, code.max_locals, args_size
-        );
-        let mut instructions = code.decode();
-        while let Some((ipos, instr)) = instructions.decode_next()? {
+        if let Some(code) = method.attributes.get_code() {
+            let mut args_size = method.descriptor.params.len();
+            let method_name = cf.constant_pool.get_utf8(method.name_index).unwrap();
+            if method_name == "<init>" {
+                args_size += 1;
+            }
+            println!("    Code:");
             println!(
-                "    {:>4}: {}",
-                ipos,
-                format_instr(ipos, &instr, &cf.constant_pool)
+                "      stack={}, locals={}, args_size={}",
+                code.max_stack, code.max_locals, args_size
             );
+            let mut instructions = code.decode();
+            while let Some((ipos, instr)) = instructions.decode_next()? {
+                println!(
+                    "    {:>4}: {}",
+                    ipos,
+                    format_instr(ipos, &instr, &cf.constant_pool)
+                );
+            }
+
+            if let Some(stack_map_table) = code.attributes.get_stack_map_table() {
+                println!("    StackMapTable: {:?}", stack_map_table);
+            }
         }
     }
 
