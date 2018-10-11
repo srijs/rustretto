@@ -35,7 +35,10 @@ impl Attributes {
         })
     }
 
-    pub fn get<'a, A: Attribute<'a>>(&'a self) -> Fallible<A> {
+    pub fn get<'a, A>(&'a self) -> Fallible<A>
+    where
+        A: Attribute<'a>,
+    {
         if let Some(bytes) = self.attrs.get(A::NAME) {
             A::decode(bytes, &self.consts)
         } else {

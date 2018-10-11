@@ -1,3 +1,5 @@
+use std::iter::ExactSizeIterator;
+
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
@@ -5,82 +7,62 @@ use super::super::{ConstantIndex, ConstantPool};
 use super::Attribute;
 
 #[derive(Debug)]
-pub struct StackMapTable {
-    pub entries: Vec<StackMapTableEntry>,
+pub struct StackMapTable<'a> {
+    count: u16,
+    bytes: &'a [u8],
 }
 
-impl<'a> Attribute<'a> for StackMapTable {
+impl<'a> StackMapTable<'a> {
+    pub fn len(&self) -> u16 {
+        self.count
+    }
+
+    pub fn entries(&self) -> Entries<'a> {
+        Entries {
+            count: self.count,
+            bytes: self.bytes,
+        }
+    }
+}
+
+impl<'a> Attribute<'a> for StackMapTable<'a> {
     const NAME: &'static str = "StackMapTable";
 
     fn decode(mut bytes: &'a [u8], _consts: &ConstantPool) -> Fallible<Self> {
         let count = bytes.read_u16::<BigEndian>()?;
-        let mut entries = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            let frame_type = bytes.read_u8()?;
-            if frame_type <= 63 {
-                entries.push(StackMapTableEntry::SameFrame {
-                    offset_delta: frame_type,
-                });
-            } else if frame_type >= 64 && frame_type <= 127 {
-                let stack_item = parse_verification_type_info(bytes)?;
-                entries.push(StackMapTableEntry::SameLocals1StackItem {
-                    offset_delta: frame_type - 64,
-                    stack_item,
-                });
-            } else if frame_type == 247 {
-                let offset_delta = bytes.read_u16::<BigEndian>()?;
-                let stack_item = parse_verification_type_info(bytes)?;
-                entries.push(StackMapTableEntry::SameLocals1StackItemExtended {
-                    offset_delta,
-                    stack_item,
-                });
-            } else if frame_type >= 248 && frame_type <= 250 {
-                let offset_delta = bytes.read_u16::<BigEndian>()?;
-                entries.push(StackMapTableEntry::ChopFrame {
-                    offset_delta,
-                    k: 251 - frame_type,
-                });
-            } else if frame_type == 251 {
-                let offset_delta = bytes.read_u16::<BigEndian>()?;
-                entries.push(StackMapTableEntry::SameFrameExtended { offset_delta });
-            } else if frame_type >= 252 && frame_type <= 254 {
-                let offset_delta = bytes.read_u16::<BigEndian>()?;
-                let k = frame_type - 251;
-                let mut locals = Vec::with_capacity(k as usize);
-                for _ in 0..k {
-                    locals.push(parse_verification_type_info(&mut bytes)?);
-                }
-                entries.push(StackMapTableEntry::AppendFrame {
-                    offset_delta,
-                    locals,
-                });
-            } else if frame_type == 255 {
-                let offset_delta = bytes.read_u16::<BigEndian>()?;
-                let number_of_locals = bytes.read_u16::<BigEndian>()?;
-                let mut locals = Vec::with_capacity(number_of_locals as usize);
-                for _ in 0..number_of_locals {
-                    locals.push(parse_verification_type_info(&mut bytes)?);
-                }
-                let number_of_stack_items = bytes.read_u16::<BigEndian>()?;
-                let mut stack_items = Vec::with_capacity(number_of_stack_items as usize);
-                for _ in 0..number_of_stack_items {
-                    stack_items.push(parse_verification_type_info(&mut bytes)?);
-                }
-                entries.push(StackMapTableEntry::FullFrame {
-                    offset_delta,
-                    locals,
-                    stack_items,
-                });
-            } else {
-                bail!("unknown frame type {}", frame_type)
-            }
+        Ok(StackMapTable { count, bytes })
+    }
+}
+
+pub struct Entries<'a> {
+    count: u16,
+    bytes: &'a [u8],
+}
+
+impl<'a> Iterator for Entries<'a> {
+    type Item = Fallible<Entry>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.count == 0 {
+            return None;
         }
-        Ok(StackMapTable { entries })
+        self.count -= 1;
+        Some(parse_stack_map_table_entry(&mut self.bytes))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.count as usize, Some(self.count as usize))
+    }
+}
+
+impl<'a> ExactSizeIterator for Entries<'a> {
+    fn len(&self) -> usize {
+        self.count as usize
     }
 }
 
 #[derive(Debug)]
-pub enum StackMapTableEntry {
+pub enum Entry {
     SameFrame {
         offset_delta: u8,
     },
@@ -137,5 +119,66 @@ fn parse_verification_type_info(mut bytes: &[u8]) -> Fallible<VerificationTypeIn
             bytes.read_u16::<BigEndian>()?,
         )),
         x => bail!("unknown verification type tag {}", x),
+    }
+}
+
+fn parse_stack_map_table_entry(mut bytes: &[u8]) -> Fallible<Entry> {
+    let frame_type = bytes.read_u8()?;
+    if frame_type <= 63 {
+        Ok(Entry::SameFrame {
+            offset_delta: frame_type,
+        })
+    } else if frame_type >= 64 && frame_type <= 127 {
+        let stack_item = parse_verification_type_info(bytes)?;
+        Ok(Entry::SameLocals1StackItem {
+            offset_delta: frame_type - 64,
+            stack_item,
+        })
+    } else if frame_type == 247 {
+        let offset_delta = bytes.read_u16::<BigEndian>()?;
+        let stack_item = parse_verification_type_info(bytes)?;
+        Ok(Entry::SameLocals1StackItemExtended {
+            offset_delta,
+            stack_item,
+        })
+    } else if frame_type >= 248 && frame_type <= 250 {
+        let offset_delta = bytes.read_u16::<BigEndian>()?;
+        Ok(Entry::ChopFrame {
+            offset_delta,
+            k: 251 - frame_type,
+        })
+    } else if frame_type == 251 {
+        let offset_delta = bytes.read_u16::<BigEndian>()?;
+        Ok(Entry::SameFrameExtended { offset_delta })
+    } else if frame_type >= 252 && frame_type <= 254 {
+        let offset_delta = bytes.read_u16::<BigEndian>()?;
+        let k = frame_type - 251;
+        let mut locals = Vec::with_capacity(k as usize);
+        for _ in 0..k {
+            locals.push(parse_verification_type_info(&mut bytes)?);
+        }
+        Ok(Entry::AppendFrame {
+            offset_delta,
+            locals,
+        })
+    } else if frame_type == 255 {
+        let offset_delta = bytes.read_u16::<BigEndian>()?;
+        let number_of_locals = bytes.read_u16::<BigEndian>()?;
+        let mut locals = Vec::with_capacity(number_of_locals as usize);
+        for _ in 0..number_of_locals {
+            locals.push(parse_verification_type_info(&mut bytes)?);
+        }
+        let number_of_stack_items = bytes.read_u16::<BigEndian>()?;
+        let mut stack_items = Vec::with_capacity(number_of_stack_items as usize);
+        for _ in 0..number_of_stack_items {
+            stack_items.push(parse_verification_type_info(&mut bytes)?);
+        }
+        Ok(Entry::FullFrame {
+            offset_delta,
+            locals,
+            stack_items,
+        })
+    } else {
+        bail!("unknown frame type {}", frame_type)
     }
 }

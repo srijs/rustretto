@@ -241,7 +241,13 @@ fn analyze(opt: Opt) -> Fallible<()> {
             }
 
             if let Ok(stack_map_table) = code.attributes.get::<attrs::StackMapTable>() {
-                println!("    StackMapTable: {:?}", stack_map_table);
+                println!(
+                    "    StackMapTable: number_of_entries = {}",
+                    stack_map_table.len()
+                );
+                for entry in stack_map_table.entries() {
+                    println!("      {:?}", entry);
+                }
             }
         }
     }
