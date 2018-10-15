@@ -112,6 +112,7 @@ impl Expr {
         match self {
             Expr::Var(_) => true,
             Expr::ConstInt(_) => true,
+            Expr::ConstString(_) => true,
             _ => false,
         }
     }
@@ -119,8 +120,9 @@ impl Expr {
 
 #[derive(Debug)]
 enum BranchStub {
-    Return(Option<VarId>),
+    Goto(u32),
     IfEq(VarId, u32),
+    Return(Option<VarId>),
 }
 
 #[derive(Debug)]
@@ -322,7 +324,17 @@ fn translate_block(
                     statements.push(stmt);
                 } else {
                     statements.push(stmt);
-                    // TODO insert branch due to possible exception
+                    // if the expression has a side effect, we need to consider
+                    // the possibility that it might throw an exception.
+                    // to handle this, we split the block with a simple go-to
+                    // branch to the next instruction.
+                    let branch_stub = BranchStub::Goto(dasm.position());
+                    return Ok(BasicBlock {
+                        incoming,
+                        statements,
+                        branch_stub,
+                        outgoing: state,
+                    });
                 }
             }
             TranslateNext::Branch(branch_stub) => {
@@ -350,12 +362,15 @@ fn translate(
             dasm.set_position(index);
             let block = translate_block(&mut dasm, state, &consts, var_id_gen)?;
             match block.branch_stub {
+                BranchStub::Goto(index) => {
+                    stack.push((index, block.outgoing.clone()));
+                }
                 BranchStub::IfEq(_, if_index) => {
                     let else_index = dasm.position();
                     stack.push((if_index, block.outgoing.clone()));
                     stack.push((else_index, block.outgoing.clone()));
                 }
-                _ => {}
+                BranchStub::Return(_) => {}
             }
             blocks.insert(index, block);
         }
@@ -386,8 +401,8 @@ fn main() {
             &mut var_id_gen,
         ).unwrap();
         println!("⭆ Method {}", name);
-        for block in blocks.values() {
-            dump::dump_basic_block(&block, &cf.constant_pool);
+        for (idx, block) in blocks.iter() {
+            dump::dump_basic_block(*idx, &block, &cf.constant_pool);
         }
     }
 }

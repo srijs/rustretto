@@ -1,7 +1,7 @@
 use super::*;
 
-pub(crate) fn dump_basic_block(block: &BasicBlock, consts: &ConstantPool) {
-    println!("╒══[ Basic Block ]══");
+pub(crate) fn dump_basic_block(idx: u32, block: &BasicBlock, consts: &ConstantPool) {
+    println!("╒══[ Basic Block {} ]══", idx);
     println!("│ Stack: {:?}", block.incoming.stack);
     println!("│ Local: {:?}", block.incoming.locals);
     println!("├───────────────────");
