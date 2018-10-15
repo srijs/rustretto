@@ -19,7 +19,7 @@ pub use self::constant_pool::{ConstantIndex, ConstantPool};
 pub mod attrs;
 pub use self::attrs::{Attribute, Attributes};
 pub mod descriptors;
-pub use self::descriptors::MethodDescriptor;
+pub use self::descriptors::{FieldType, MethodDescriptor};
 pub mod instructions;
 
 #[derive(Debug)]
@@ -42,6 +42,20 @@ pub struct Method {
     pub name_index: ConstantIndex,
     pub descriptor: MethodDescriptor,
     pub attributes: Attributes,
+}
+
+#[derive(Debug)]
+pub struct MethodRef {
+    pub class_index: ConstantIndex,
+    pub name_index: ConstantIndex,
+    pub descriptor: MethodDescriptor,
+}
+
+#[derive(Debug)]
+pub struct FieldRef {
+    pub class_index: ConstantIndex,
+    pub name_index: ConstantIndex,
+    pub descriptor: FieldType,
 }
 
 #[derive(Debug)]

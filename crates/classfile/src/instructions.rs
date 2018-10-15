@@ -201,8 +201,16 @@ impl Disassembler {
         }
     }
 
+    pub fn position(&self) -> u32 {
+        self.code.position() as u32
+    }
+
+    pub fn set_position(&mut self, pos: u32) {
+        self.code.set_position(pos as u64)
+    }
+
     pub fn decode_next(&mut self) -> Fallible<Option<(u32, Instr)>> {
-        let pos = self.code.position() as u32;
+        let pos = self.position();
         if pos >= self.code.get_ref().len() as u32 {
             return Ok(None);
         }
