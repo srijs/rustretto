@@ -121,7 +121,7 @@ impl Expr {
 #[derive(Debug)]
 enum BranchStub {
     Goto(u32),
-    IfEq(VarId, u32),
+    IfEq(VarId, u32, u32),
     Return(Option<VarId>),
 }
 
@@ -142,6 +142,20 @@ impl StackAndLocals {
         let stack = Vec::with_capacity(max_stack as usize);
         let mut locals = BTreeMap::new();
         locals.extend(args.into_iter().cloned().enumerate());
+        StackAndLocals { stack, locals }
+    }
+
+    fn new_with_same_shape(&self, var_id_gen: &mut VarIdGen) -> Self {
+        let stack = self
+            .stack
+            .iter()
+            .map(|v| var_id_gen.gen(v.0.clone()))
+            .collect();
+        let locals = self
+            .locals
+            .iter()
+            .map(|(i, v)| (*i, var_id_gen.gen(v.0.clone())))
+            .collect();
         StackAndLocals { stack, locals }
     }
 
@@ -300,8 +314,11 @@ fn translate_next(
             }
             Instr::IfEq(offset) => {
                 let var = state.pop();
-                let addr = pos as i64 + offset as i64;
-                return Ok(TranslateNext::Branch(BranchStub::IfEq(var, addr as u32)));
+                let if_addr = (pos as i64 + offset as i64) as u32;
+                let else_addr = dasm.position();
+                return Ok(TranslateNext::Branch(BranchStub::IfEq(
+                    var, if_addr, else_addr,
+                )));
             }
             _ => bail!("unsupported instruction {:?}", instr),
         }
@@ -363,12 +380,11 @@ fn translate(
             let block = translate_block(&mut dasm, state, &consts, var_id_gen)?;
             match block.branch_stub {
                 BranchStub::Goto(index) => {
-                    stack.push((index, block.outgoing.clone()));
+                    stack.push((index, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
-                BranchStub::IfEq(_, if_index) => {
-                    let else_index = dasm.position();
-                    stack.push((if_index, block.outgoing.clone()));
-                    stack.push((else_index, block.outgoing.clone()));
+                BranchStub::IfEq(_, if_index, else_index) => {
+                    stack.push((if_index, block.outgoing.new_with_same_shape(var_id_gen)));
+                    stack.push((else_index, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
                 BranchStub::Return(_) => {}
             }
