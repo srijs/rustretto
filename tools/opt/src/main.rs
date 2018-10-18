@@ -5,6 +5,7 @@ extern crate failure;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
+use std::iter::FromIterator;
 use std::sync::Arc;
 
 use classfile::attrs::stack_map_table::VerificationTypeInfo;
@@ -16,6 +17,9 @@ use classfile::{ClassFile, ConstantIndex, ConstantPool};
 use failure::Fallible;
 
 mod dump;
+mod utils;
+
+use utils::MinHeap;
 
 #[derive(Clone)]
 struct Type {
@@ -373,18 +377,18 @@ fn translate(
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<BTreeMap<u32, BasicBlock>> {
     let mut blocks = BTreeMap::new();
-    let mut stack = vec![(0u32, incoming)];
-    while let Some((index, state)) = stack.pop() {
+    let mut remaining = MinHeap::singleton(0u32, incoming);
+    while let Some((index, state)) = remaining.pop() {
         if !blocks.contains_key(&index) {
             dasm.set_position(index);
             let block = translate_block(&mut dasm, state, &consts, var_id_gen)?;
             match block.branch_stub {
                 BranchStub::Goto(index) => {
-                    stack.push((index, block.outgoing.new_with_same_shape(var_id_gen)));
+                    remaining.push(index, block.outgoing.new_with_same_shape(var_id_gen));
                 }
                 BranchStub::IfEq(_, if_index, else_index) => {
-                    stack.push((if_index, block.outgoing.new_with_same_shape(var_id_gen)));
-                    stack.push((else_index, block.outgoing.new_with_same_shape(var_id_gen)));
+                    remaining.push(if_index, block.outgoing.new_with_same_shape(var_id_gen));
+                    remaining.push(else_index, block.outgoing.new_with_same_shape(var_id_gen));
                 }
                 BranchStub::Return(_) => {}
             }
