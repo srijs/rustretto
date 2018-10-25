@@ -11,11 +11,26 @@ pub(crate) fn dump_basic_block(idx: u32, block: &BasicBlock, consts: &ConstantPo
     }
 
     println!("├───────────────────");
-    println!("│ Branch: {:?}", block.branch_stub);
+    dump_brach_stub(&block.branch_stub);
     println!("├───────────────────");
     println!("│ Stack: {:?}", block.outgoing.stack);
     println!("│ Local: {:?}", block.outgoing.locals);
     println!("└───────────────────")
+}
+
+fn dump_brach_stub(branch_stub: &BranchStub) {
+    print!("│ Branch: ");
+    match branch_stub {
+        BranchStub::Return(None) => println!("return"),
+        BranchStub::IfEq(var, if_addr, else_addr) => println!(
+            "if ({:?} == 0) then ⭆ {} else ⭆ {}",
+            var, if_addr, else_addr
+        ),
+        BranchStub::IfException(_, else_addr) => {
+            println!("if (exception) then {{}} else ⭆ {}", else_addr)
+        }
+        _ => println!("{:?}", branch_stub),
+    }
 }
 
 fn dump_statement(stmt: &Statement, consts: &ConstantPool) {
