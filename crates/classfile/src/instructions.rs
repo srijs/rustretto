@@ -190,6 +190,19 @@ pub enum Instr {
     WideIInc(u16, i16),
 }
 
+impl Instr {
+    pub fn may_throw_runtime_exception(&self) -> bool {
+        match self {
+            Instr::IConst0 => false,
+            Instr::ALoad0 => false,
+            Instr::ALoad1 => false,
+            Instr::AStore1 => false,
+            Instr::LdC(_) => false,
+            _ => true,
+        }
+    }
+}
+
 pub struct Disassembler {
     code: Cursor<ByteBuf>,
 }

@@ -16,9 +16,11 @@ use classfile::instructions::{Disassembler, Instr};
 use classfile::{ClassFile, ConstantIndex, ConstantPool};
 use failure::Fallible;
 
+mod disasm;
 mod dump;
 mod utils;
 
+use disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
 use utils::MinHeap;
 
 #[derive(Clone)]
@@ -111,22 +113,14 @@ enum Expr {
     Invoke(InvokeTarget, ConstantIndex, Vec<VarId>),
 }
 
-impl Expr {
-    pub fn is_side_effect_free(&self) -> bool {
-        match self {
-            Expr::Var(_) => true,
-            Expr::ConstInt(_) => true,
-            Expr::ConstString(_) => true,
-            _ => false,
-        }
-    }
-}
+#[derive(Debug)]
+struct ExceptionHandlers; // TODO
 
 #[derive(Debug)]
 enum BranchStub {
-    Goto(u32),
     IfEq(VarId, u32, u32),
     Return(Option<VarId>),
+    IfException(ExceptionHandlers, u32),
 }
 
 #[derive(Debug)]
@@ -195,7 +189,6 @@ struct Statement {
 struct BasicBlock {
     incoming: StackAndLocals,
     statements: Vec<Statement>,
-    //exceptions: (), // TODO
     branch_stub: BranchStub,
     outgoing: StackAndLocals,
 }
@@ -235,12 +228,12 @@ fn translate_invoke(
 }
 
 fn translate_next(
-    dasm: &mut Disassembler,
+    instrs: &mut Iterator<Item = &InstructionWithRange>,
     state: &mut StackAndLocals,
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
-) -> Fallible<TranslateNext> {
-    while let Some((pos, instr)) = dasm.decode_next()? {
+) -> Fallible<Option<TranslateNext>> {
+    for InstructionWithRange { range, instr } in instrs {
         match instr {
             Instr::ALoad0 => {
                 state.load(0);
@@ -258,19 +251,19 @@ fn translate_next(
                     assign: Some(var),
                     expression: Expr::ConstInt(0),
                 };
-                return Ok(TranslateNext::Statement(statement));
+                return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::GetStatic(idx) => {
-                let field = consts.get_field_ref(ConstantIndex::from_u16(idx)).unwrap();
+                let field = consts.get_field_ref(ConstantIndex::from_u16(*idx)).unwrap();
                 let var = var_id_gen.gen(Type::from_field_type(field.descriptor));
                 state.push(var.clone());
                 let statement = Statement {
                     assign: Some(var),
-                    expression: Expr::GetStatic(ConstantIndex::from_u16(idx)),
+                    expression: Expr::GetStatic(ConstantIndex::from_u16(*idx)),
                 };
-                return Ok(TranslateNext::Statement(statement));
+                return Ok(Some(TranslateNext::Statement(statement)));
             }
-            Instr::LdC(idx) => match consts.get_info(ConstantIndex::from_u8(idx)).unwrap() {
+            Instr::LdC(idx) => match consts.get_info(ConstantIndex::from_u8(*idx)).unwrap() {
                 Constant::String(ref string_const) => {
                     let string_value = consts.get_utf8(string_const.string_index).unwrap();
                     let var = var_id_gen.gen(Type::string());
@@ -279,86 +272,81 @@ fn translate_next(
                         assign: Some(var),
                         expression: Expr::ConstString(string_value.to_owned()),
                     };
-                    return Ok(TranslateNext::Statement(statement));
+                    return Ok(Some(TranslateNext::Statement(statement)));
                 }
                 constant => bail!("unsupported load of constant {:?}", constant),
             },
             Instr::InvokeSpecial(idx) => {
                 let statement = translate_invoke(
                     InvokeType::Special,
-                    ConstantIndex::from_u16(idx),
+                    ConstantIndex::from_u16(*idx),
                     state,
                     consts,
                     var_id_gen,
                 )?;
-                return Ok(TranslateNext::Statement(statement));
+                return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::InvokeStatic(idx) => {
                 let statement = translate_invoke(
                     InvokeType::Static,
-                    ConstantIndex::from_u16(idx),
+                    ConstantIndex::from_u16(*idx),
                     state,
                     consts,
                     var_id_gen,
                 )?;
-                return Ok(TranslateNext::Statement(statement));
+                return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::InvokeVirtual(idx) => {
                 let statement = translate_invoke(
                     InvokeType::Virtual,
-                    ConstantIndex::from_u16(idx),
+                    ConstantIndex::from_u16(*idx),
                     state,
                     consts,
                     var_id_gen,
                 )?;
-                return Ok(TranslateNext::Statement(statement));
+                return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::Return => {
-                return Ok(TranslateNext::Branch(BranchStub::Return(None)));
+                return Ok(Some(TranslateNext::Branch(BranchStub::Return(None))));
             }
             Instr::IfEq(offset) => {
                 let var = state.pop();
-                let if_addr = (pos as i64 + offset as i64) as u32;
-                let else_addr = dasm.position();
-                return Ok(TranslateNext::Branch(BranchStub::IfEq(
+                let if_addr = (range.start as i64 + *offset as i64) as u32;
+                let else_addr = range.end;
+                return Ok(Some(TranslateNext::Branch(BranchStub::IfEq(
                     var, if_addr, else_addr,
-                )));
+                ))));
             }
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }
-    bail!("unexpected end of instruction stream")
+    Ok(None)
 }
 
 fn translate_block(
-    dasm: &mut Disassembler,
+    instr_block: &InstructionBlock,
     incoming: StackAndLocals,
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<BasicBlock> {
     let mut state = incoming.clone();
     let mut statements = Vec::new();
+    let mut instrs = instr_block.instrs.iter();
     loop {
-        match translate_next(dasm, &mut state, &consts, var_id_gen)? {
-            TranslateNext::Statement(stmt) => {
-                if stmt.expression.is_side_effect_free() {
-                    statements.push(stmt);
-                } else {
-                    statements.push(stmt);
-                    // if the expression has a side effect, we need to consider
-                    // the possibility that it might throw an exception.
-                    // to handle this, we split the block with a simple go-to
-                    // branch to the next instruction.
-                    let branch_stub = BranchStub::Goto(dasm.position());
-                    return Ok(BasicBlock {
-                        incoming,
-                        statements,
-                        branch_stub,
-                        outgoing: state,
-                    });
-                }
+        match translate_next(&mut instrs, &mut state, &consts, var_id_gen)? {
+            Some(TranslateNext::Statement(stmt)) => {
+                statements.push(stmt);
             }
-            TranslateNext::Branch(branch_stub) => {
+            Some(TranslateNext::Branch(branch_stub)) => {
+                return Ok(BasicBlock {
+                    incoming,
+                    statements,
+                    branch_stub,
+                    outgoing: state,
+                });
+            }
+            None => {
+                let branch_stub = BranchStub::IfException(ExceptionHandlers, instr_block.range.end);
                 return Ok(BasicBlock {
                     incoming,
                     statements,
@@ -371,20 +359,21 @@ fn translate_block(
 }
 
 fn translate(
-    mut dasm: Disassembler,
+    dasm: Disassembler,
     incoming: StackAndLocals,
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<BTreeMap<u32, BasicBlock>> {
+    let instr_block_map = InstructionBlockMap::build(dasm)?;
     let mut blocks = BTreeMap::new();
     let mut remaining = MinHeap::singleton(0u32, incoming);
-    while let Some((index, state)) = remaining.pop() {
-        if !blocks.contains_key(&index) {
-            dasm.set_position(index);
-            let block = translate_block(&mut dasm, state, &consts, var_id_gen)?;
+    while let Some((addr, state)) = remaining.pop() {
+        if !blocks.contains_key(&addr) {
+            let instr_block = instr_block_map.block_starting_at(addr);
+            let block = translate_block(instr_block, state, &consts, var_id_gen)?;
             match block.branch_stub {
-                BranchStub::Goto(index) => {
-                    remaining.push(index, block.outgoing.new_with_same_shape(var_id_gen));
+                BranchStub::IfException(_, else_index) => {
+                    remaining.push(else_index, block.outgoing.new_with_same_shape(var_id_gen));
                 }
                 BranchStub::IfEq(_, if_index, else_index) => {
                     remaining.push(if_index, block.outgoing.new_with_same_shape(var_id_gen));
@@ -392,7 +381,7 @@ fn translate(
                 }
                 BranchStub::Return(_) => {}
             }
-            blocks.insert(index, block);
+            blocks.insert(addr, block);
         }
     }
     Ok(blocks)
