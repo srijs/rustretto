@@ -12,6 +12,7 @@ pub(crate) fn dump_basic_block(idx: u32, block: &BasicBlock, consts: &ConstantPo
 
     println!("├───────────────────");
     dump_brach_stub(&block.branch_stub);
+    println!("│ Exceptions: {:?}", block.exceptions);
     println!("├───────────────────");
     println!("│ Stack: {:?}", block.outgoing.stack);
     println!("│ Local: {:?}", block.outgoing.locals);
@@ -26,9 +27,7 @@ fn dump_brach_stub(branch_stub: &BranchStub) {
             "if ({:?} == 0) then ⭆ {} else ⭆ {}",
             var, if_addr, else_addr
         ),
-        BranchStub::IfException(_, else_addr) => {
-            println!("if (exception) then {{}} else ⭆ {}", else_addr)
-        }
+        BranchStub::Goto(addr) => println!("⭆ {}", addr),
         _ => println!("{:?}", branch_stub),
     }
 }

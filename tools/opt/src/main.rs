@@ -118,9 +118,9 @@ struct ExceptionHandlers; // TODO
 
 #[derive(Debug)]
 enum BranchStub {
+    Goto(u32),
     IfEq(VarId, u32, u32),
     Return(Option<VarId>),
-    IfException(ExceptionHandlers, u32),
 }
 
 #[derive(Debug)]
@@ -190,12 +190,13 @@ struct BasicBlock {
     incoming: StackAndLocals,
     statements: Vec<Statement>,
     branch_stub: BranchStub,
+    exceptions: Option<ExceptionHandlers>,
     outgoing: StackAndLocals,
 }
 
 enum TranslateNext {
     Statement(Statement),
-    Branch(BranchStub),
+    Branch(BranchStub, Option<ExceptionHandlers>),
 }
 
 fn translate_invoke(
@@ -307,15 +308,19 @@ fn translate_next(
                 return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::Return => {
-                return Ok(Some(TranslateNext::Branch(BranchStub::Return(None))));
+                return Ok(Some(TranslateNext::Branch(
+                    BranchStub::Return(None),
+                    Some(ExceptionHandlers),
+                )));
             }
             Instr::IfEq(offset) => {
                 let var = state.pop();
                 let if_addr = (range.start as i64 + *offset as i64) as u32;
                 let else_addr = range.end;
-                return Ok(Some(TranslateNext::Branch(BranchStub::IfEq(
-                    var, if_addr, else_addr,
-                ))));
+                return Ok(Some(TranslateNext::Branch(
+                    BranchStub::IfEq(var, if_addr, else_addr),
+                    None,
+                )));
             }
             _ => bail!("unsupported instruction {:?}", instr),
         }
@@ -337,20 +342,22 @@ fn translate_block(
             Some(TranslateNext::Statement(stmt)) => {
                 statements.push(stmt);
             }
-            Some(TranslateNext::Branch(branch_stub)) => {
+            Some(TranslateNext::Branch(branch_stub, exceptions)) => {
                 return Ok(BasicBlock {
                     incoming,
                     statements,
                     branch_stub,
+                    exceptions,
                     outgoing: state,
                 });
             }
             None => {
-                let branch_stub = BranchStub::IfException(ExceptionHandlers, instr_block.range.end);
+                let branch_stub = BranchStub::Goto(instr_block.range.end);
                 return Ok(BasicBlock {
                     incoming,
                     statements,
                     branch_stub,
+                    exceptions: Some(ExceptionHandlers),
                     outgoing: state,
                 });
             }
@@ -372,12 +379,12 @@ fn translate(
             let instr_block = instr_block_map.block_starting_at(addr);
             let block = translate_block(instr_block, state, &consts, var_id_gen)?;
             match block.branch_stub {
-                BranchStub::IfException(_, else_index) => {
-                    remaining.push(else_index, block.outgoing.new_with_same_shape(var_id_gen));
+                BranchStub::Goto(addr) => {
+                    remaining.push(addr, block.outgoing.new_with_same_shape(var_id_gen));
                 }
-                BranchStub::IfEq(_, if_index, else_index) => {
-                    remaining.push(if_index, block.outgoing.new_with_same_shape(var_id_gen));
-                    remaining.push(else_index, block.outgoing.new_with_same_shape(var_id_gen));
+                BranchStub::IfEq(_, if_addr, else_addr) => {
+                    remaining.push(if_addr, block.outgoing.new_with_same_shape(var_id_gen));
+                    remaining.push(else_addr, block.outgoing.new_with_same_shape(var_id_gen));
                 }
                 BranchStub::Return(_) => {}
             }
