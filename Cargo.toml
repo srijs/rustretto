@@ -4,5 +4,7 @@ members = [
   "crates/jar",
 
   "tools/javapv",
-  "tools/opt"
+
+  "compiler",
+  "runtime"
 ]

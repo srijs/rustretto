@@ -96,7 +96,7 @@ pub enum Entry {
     },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VerificationTypeInfo {
     Top,
     Integer,

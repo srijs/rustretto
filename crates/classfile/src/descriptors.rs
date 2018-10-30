@@ -32,18 +32,18 @@ impl MethodDescriptor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ParameterDescriptor {
     Field(FieldType),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ReturnTypeDescriptor {
     Field(FieldType),
     Void,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum FieldType {
     Base(BaseType),
     Object(ObjectType),
@@ -85,7 +85,7 @@ impl FieldType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BaseType {
     Byte,
     Char,
@@ -97,12 +97,12 @@ pub enum BaseType {
     Boolean,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ObjectType {
     pub class_name: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ArrayType {
     pub component_type: Box<FieldType>,
 }

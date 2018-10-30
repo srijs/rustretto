@@ -47,10 +47,6 @@ impl InstructionBlock {
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);
                     true
                 }
-                _ if instr.may_throw_runtime_exception() => {
-                    start_addrs.push(next_addr);
-                    true
-                }
                 _ => false,
             };
             let instr_range = Range {

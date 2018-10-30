@@ -1,43 +1,47 @@
 extern crate classfile;
 #[macro_use]
 extern crate failure;
+extern crate petgraph;
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
-use std::iter::FromIterator;
-use std::sync::Arc;
 
 use classfile::attrs::stack_map_table::VerificationTypeInfo;
 use classfile::attrs::Code;
 use classfile::constant_pool::Constant;
-use classfile::descriptors::{FieldType, ReturnTypeDescriptor};
+use classfile::descriptors::{
+    ArrayType, BaseType, FieldType, ParameterDescriptor, ReturnTypeDescriptor,
+};
 use classfile::instructions::{Disassembler, Instr};
 use classfile::{ClassFile, ConstantIndex, ConstantPool};
 use failure::Fallible;
 
 mod disasm;
-mod dump;
+mod frame;
+mod generate;
+mod graph;
 mod utils;
 
 use disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
+use frame::StackAndLocals;
+use graph::BlockGraph;
 use utils::MinHeap;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Type {
-    info: Arc<VerificationTypeInfo>,
+    info: VerificationTypeInfo,
 }
 
 impl Type {
     pub fn int() -> Self {
         Type {
-            info: Arc::new(VerificationTypeInfo::Integer),
+            info: VerificationTypeInfo::Integer,
         }
     }
 
     pub fn string() -> Self {
         Type {
-            info: Arc::new(VerificationTypeInfo::Object("java.lang.String".to_owned())),
+            info: VerificationTypeInfo::Object("java.lang.String".to_owned()),
         }
     }
 
@@ -48,16 +52,54 @@ impl Type {
                 _ => unimplemented!("unsupported base type {:?}", base_type),
             },
             FieldType::Object(object_type) => Type {
-                info: Arc::new(VerificationTypeInfo::Object(object_type.class_name)),
+                info: VerificationTypeInfo::Object(object_type.class_name),
             },
+            FieldType::Array(array_type) => {
+                let class_name = array_type_to_class_name(&array_type);
+                Type {
+                    info: VerificationTypeInfo::Object(class_name),
+                }
+            }
             _ => unimplemented!("unsupported field type {:?}", field_type),
+        }
+    }
+}
+
+pub fn array_type_to_class_name(array_type: &ArrayType) -> String {
+    let mut output = "[".to_owned();
+    let mut field_type = &*array_type.component_type;
+    loop {
+        match field_type {
+            FieldType::Base(base_type) => {
+                match base_type {
+                    BaseType::Byte => output.push('B'),
+                    BaseType::Char => output.push('C'),
+                    BaseType::Double => output.push('D'),
+                    BaseType::Float => output.push('F'),
+                    BaseType::Int => output.push('I'),
+                    BaseType::Long => output.push('J'),
+                    BaseType::Short => output.push('S'),
+                    BaseType::Boolean => output.push('Z'),
+                };
+                return output;
+            }
+            FieldType::Object(object_type) => {
+                output.push('L');
+                output.push_str(&object_type.class_name);
+                output.push(';');
+                return output;
+            }
+            FieldType::Array(array_type) => {
+                output.push('[');
+                field_type = &*array_type.component_type;
+            }
         }
     }
 }
 
 impl fmt::Debug for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self.info {
+        match self.info {
             VerificationTypeInfo::Integer => write!(f, "int"),
             VerificationTypeInfo::Object(ref name) => write!(f, "{}", name),
             _ => self.info.fmt(f),
@@ -68,8 +110,8 @@ impl fmt::Debug for Type {
 #[derive(Debug)]
 struct BlockId(usize);
 
-#[derive(Clone)]
-struct VarId(Type, u64);
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct VarId(pub Type, pub u64);
 
 impl fmt::Debug for VarId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -104,13 +146,20 @@ enum InvokeTarget {
 }
 
 #[derive(Debug)]
+struct InvokeExpr {
+    pub target: InvokeTarget,
+    pub index: ConstantIndex,
+    pub args: Vec<VarId>,
+}
+
+#[derive(Debug)]
 enum Expr {
     Var(VarId),
     Const(ConstantIndex),
     ConstInt(i32),
     ConstString(String),
     GetStatic(ConstantIndex),
-    Invoke(InvokeTarget, ConstantIndex, Vec<VarId>),
+    Invoke(InvokeExpr),
 }
 
 #[derive(Debug)]
@@ -121,62 +170,13 @@ enum BranchStub {
     Goto(u32),
     IfEq(VarId, u32, u32),
     Return(Option<VarId>),
+    Invoke(Option<VarId>, InvokeExpr, u32),
 }
 
 #[derive(Debug)]
 enum Branch {
     Return(Option<VarId>),
     IfEq(VarId, BlockId, BlockId),
-}
-
-#[derive(Clone, Debug)]
-struct StackAndLocals {
-    stack: Vec<VarId>,
-    locals: BTreeMap<usize, VarId>,
-}
-
-impl StackAndLocals {
-    fn new(max_stack: u16, _max_locals: u16, args: &[VarId]) -> StackAndLocals {
-        let stack = Vec::with_capacity(max_stack as usize);
-        let mut locals = BTreeMap::new();
-        locals.extend(args.into_iter().cloned().enumerate());
-        StackAndLocals { stack, locals }
-    }
-
-    fn new_with_same_shape(&self, var_id_gen: &mut VarIdGen) -> Self {
-        let stack = self
-            .stack
-            .iter()
-            .map(|v| var_id_gen.gen(v.0.clone()))
-            .collect();
-        let locals = self
-            .locals
-            .iter()
-            .map(|(i, v)| (*i, var_id_gen.gen(v.0.clone())))
-            .collect();
-        StackAndLocals { stack, locals }
-    }
-
-    fn pop(&mut self) -> VarId {
-        self.stack.pop().unwrap()
-    }
-
-    fn pop_n(&mut self, n: usize) -> Vec<VarId> {
-        let index = self.stack.len() - n;
-        self.stack.split_off(index)
-    }
-
-    fn push(&mut self, var: VarId) {
-        self.stack.push(var);
-    }
-
-    fn load(&mut self, idx: usize) {
-        self.stack.push(self.locals[&idx].clone());
-    }
-
-    fn store(&mut self, idx: usize) {
-        self.locals.insert(idx, self.stack.pop().unwrap());
-    }
 }
 
 #[derive(Debug)]
@@ -187,6 +187,7 @@ struct Statement {
 
 #[derive(Debug)]
 struct BasicBlock {
+    address: u32,
     incoming: StackAndLocals,
     statements: Vec<Statement>,
     branch_stub: BranchStub,
@@ -205,14 +206,26 @@ fn translate_invoke(
     state: &mut StackAndLocals,
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
-) -> Fallible<Statement> {
+) -> Fallible<(Option<VarId>, InvokeExpr)> {
     let method = consts.get_method_ref(index).unwrap();
     let method_args_len = method.descriptor.params.len();
-    let invoke_args = state.pop_n(method_args_len);
-    let expression = match invoke {
-        InvokeType::Static => Expr::Invoke(InvokeTarget::Static, index, invoke_args),
-        InvokeType::Special => Expr::Invoke(InvokeTarget::Special(state.pop()), index, invoke_args),
-        InvokeType::Virtual => Expr::Invoke(InvokeTarget::Virtual(state.pop()), index, invoke_args),
+    let args = state.pop_n(method_args_len);
+    let expr = match invoke {
+        InvokeType::Static => InvokeExpr {
+            target: InvokeTarget::Static,
+            index,
+            args,
+        },
+        InvokeType::Special => InvokeExpr {
+            target: InvokeTarget::Special(state.pop()),
+            index,
+            args,
+        },
+        InvokeType::Virtual => InvokeExpr {
+            target: InvokeTarget::Virtual(state.pop()),
+            index,
+            args,
+        },
     };
     let return_type = match method.descriptor.ret {
         ReturnTypeDescriptor::Void => None,
@@ -222,10 +235,7 @@ fn translate_invoke(
     if let Some(ref var) = return_var {
         state.push(var.clone());
     }
-    Ok(Statement {
-        assign: return_var,
-        expression,
-    })
+    Ok((return_var, expr))
 }
 
 fn translate_next(
@@ -278,33 +288,45 @@ fn translate_next(
                 constant => bail!("unsupported load of constant {:?}", constant),
             },
             Instr::InvokeSpecial(idx) => {
-                let statement = translate_invoke(
+                let (bind, expr) = translate_invoke(
                     InvokeType::Special,
                     ConstantIndex::from_u16(*idx),
                     state,
                     consts,
                     var_id_gen,
                 )?;
+                let statement = Statement {
+                    assign: bind,
+                    expression: Expr::Invoke(expr),
+                };
                 return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::InvokeStatic(idx) => {
-                let statement = translate_invoke(
+                let (bind, expr) = translate_invoke(
                     InvokeType::Static,
                     ConstantIndex::from_u16(*idx),
                     state,
                     consts,
                     var_id_gen,
                 )?;
+                let statement = Statement {
+                    assign: bind,
+                    expression: Expr::Invoke(expr),
+                };
                 return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::InvokeVirtual(idx) => {
-                let statement = translate_invoke(
+                let (bind, expr) = translate_invoke(
                     InvokeType::Virtual,
                     ConstantIndex::from_u16(*idx),
                     state,
                     consts,
                     var_id_gen,
                 )?;
+                let statement = Statement {
+                    assign: bind,
+                    expression: Expr::Invoke(expr),
+                };
                 return Ok(Some(TranslateNext::Statement(statement)));
             }
             Instr::Return => {
@@ -334,6 +356,7 @@ fn translate_block(
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<BasicBlock> {
+    let address = instr_block.range.start;
     let mut state = incoming.clone();
     let mut statements = Vec::new();
     let mut instrs = instr_block.instrs.iter();
@@ -344,6 +367,7 @@ fn translate_block(
             }
             Some(TranslateNext::Branch(branch_stub, exceptions)) => {
                 return Ok(BasicBlock {
+                    address,
                     incoming,
                     statements,
                     branch_stub,
@@ -354,6 +378,7 @@ fn translate_block(
             None => {
                 let branch_stub = BranchStub::Goto(instr_block.range.end);
                 return Ok(BasicBlock {
+                    address,
                     incoming,
                     statements,
                     branch_stub,
@@ -365,17 +390,17 @@ fn translate_block(
     }
 }
 
-fn translate(
+fn translate_method(
     dasm: Disassembler,
     incoming: StackAndLocals,
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
-) -> Fallible<BTreeMap<u32, BasicBlock>> {
+) -> Fallible<BlockGraph> {
     let instr_block_map = InstructionBlockMap::build(dasm)?;
-    let mut blocks = BTreeMap::new();
+    let mut blocks = BlockGraph::new();
     let mut remaining = MinHeap::singleton(0u32, incoming);
     while let Some((addr, state)) = remaining.pop() {
-        if !blocks.contains_key(&addr) {
+        if !blocks.contains(addr) {
             let instr_block = instr_block_map.block_starting_at(addr);
             let block = translate_block(instr_block, state, &consts, var_id_gen)?;
             match block.branch_stub {
@@ -386,39 +411,52 @@ fn translate(
                     remaining.push(if_addr, block.outgoing.new_with_same_shape(var_id_gen));
                     remaining.push(else_addr, block.outgoing.new_with_same_shape(var_id_gen));
                 }
+                BranchStub::Invoke(_, _, addr) => {
+                    remaining.push(addr, block.outgoing.new_with_same_shape(var_id_gen));
+                }
                 BranchStub::Return(_) => {}
             }
-            blocks.insert(addr, block);
+            blocks.insert(block);
         }
     }
+    blocks.calculate_edges();
     Ok(blocks)
 }
 
 fn main() {
-    let file = fs::File::open("test-jar/Test.class").unwrap();
+    let file = fs::File::open("test-jar/Basic.class").unwrap();
     let cf = ClassFile::parse(file).unwrap();
 
-    for method in cf.methods {
+    let class = cf.get_this_class();
+    let class_name = cf.constant_pool.get_utf8(class.name_index).unwrap();
+
+    generate::gen_prelude(&cf);
+    for method in cf.methods.iter() {
         let mut var_id_gen = VarIdGen { next_id: 0 };
         let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
         let mut args = Vec::new();
         if name == "<init>" {
             let arg_type = Type {
-                info: Arc::new(VerificationTypeInfo::UninitializedThis),
+                info: VerificationTypeInfo::UninitializedThis,
+            };
+            args.push(var_id_gen.gen(arg_type));
+        } else {
+            let arg_type = Type {
+                info: VerificationTypeInfo::Object(class_name.to_owned()),
             };
             args.push(var_id_gen.gen(arg_type));
         }
+        for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {
+            args.push(var_id_gen.gen(Type::from_field_type(field_type.clone())));
+        }
         let code = method.attributes.get::<Code>().unwrap();
         let state = StackAndLocals::new(code.max_stack, code.max_locals, &args);
-        let blocks = translate(
+        let blocks = translate_method(
             code.disassemble(),
             state,
             &cf.constant_pool,
             &mut var_id_gen,
         ).unwrap();
-        println!("⭆ Method {}", name);
-        for (idx, block) in blocks.iter() {
-            dump::dump_basic_block(*idx, &block, &cf.constant_pool);
-        }
+        generate::gen_method(&cf, &method, &blocks, &cf.constant_pool, &mut var_id_gen);
     }
 }
