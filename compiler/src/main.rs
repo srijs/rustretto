@@ -459,4 +459,5 @@ fn main() {
         ).unwrap();
         generate::gen_method(&cf, &method, &blocks, &cf.constant_pool, &mut var_id_gen);
     }
+    generate::gen_main(&cf);
 }

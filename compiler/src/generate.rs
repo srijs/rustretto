@@ -7,6 +7,20 @@ use classfile::{constant_pool::Constant, Method};
 use super::*;
 use graph::BlockGraph;
 
+pub(crate) fn gen_main(class: &ClassFile) {
+    let class_name = class
+        .constant_pool
+        .get_utf8(class.get_this_class().name_index)
+        .unwrap();
+    println!("define i32 @main() {{");
+    println!(
+        "  call void @{}(i8* null, i8* null)",
+        mangle_method_name(class_name, "main", &class.constant_pool)
+    );
+    println!("  ret i32 0");
+    println!("}}");
+}
+
 pub(crate) fn gen_prelude(class: &ClassFile) {
     for index in class.constant_pool.indices() {
         match class.constant_pool.get_info(index).unwrap() {
