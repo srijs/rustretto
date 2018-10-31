@@ -14,7 +14,7 @@ pub(crate) fn gen_main(class: &ClassFile) {
         .unwrap();
     println!("define i32 @main() {{");
     println!(
-        "  call void @{}(i8* null, i8* null)",
+        "  call void @{}(%ref* @nullref, %ref* @nullref)",
         mangle_method_name(class_name, "main", &class.constant_pool)
     );
     println!("  ret i32 0");
@@ -22,9 +22,13 @@ pub(crate) fn gen_main(class: &ClassFile) {
 }
 
 pub(crate) fn gen_prelude(class: &ClassFile) {
+    println!("%ref = type {{ i8*, i8* }}");
+    println!("@nullref = private constant %ref {{ i8* null, i8* null }}");
+
     for index in class.constant_pool.indices() {
         match class.constant_pool.get_info(index).unwrap() {
             Constant::MethodRef(_) => {
+                print!("\n");
                 let method_ref = class.constant_pool.get_method_ref(index).unwrap();
                 let method_name = class.constant_pool.get_utf8(method_ref.name_index).unwrap();
                 let method_class = class
@@ -37,17 +41,18 @@ pub(crate) fn gen_prelude(class: &ClassFile) {
                     .unwrap();
                 print!(
                     "declare {return_type} @{mangled_name}(",
-                    return_type = tlt_return_type(&method_ref.descriptor.ret),
+                    return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::DefineRet),
                     mangled_name =
                         mangle_method_name(method_class_name, method_name, &class.constant_pool)
                 );
-                print!("i8*");
+                print!("%ref* byval");
                 for ParameterDescriptor::Field(field) in method_ref.descriptor.params.iter() {
-                    print!(", {}", tlt_field_type(field));
+                    print!(", {}", tlt_field_type(field, TypePos::DefineArg));
                 }
                 println!(")");
             }
             Constant::FieldRef(_) => {
+                print!("\n");
                 let field_ref = class.constant_pool.get_field_ref(index).unwrap();
                 let field_name = class.constant_pool.get_utf8(field_ref.name_index).unwrap();
                 let field_class = class
@@ -59,13 +64,13 @@ pub(crate) fn gen_prelude(class: &ClassFile) {
                     .get_utf8(field_class.name_index)
                     .unwrap();
                 println!(
-                    "declare {field_type} @{mangled_name}__get(i8*)",
-                    field_type = tlt_field_type(&field_ref.descriptor),
+                    "declare {field_type} @{mangled_name}__get(%ref* byval)",
+                    field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineRet),
                     mangled_name = mangle_field_name(field_class_name, field_name)
                 );
                 println!(
-                    "declare void @{mangled_name}__set(i8*, {field_type})",
-                    field_type = tlt_field_type(&field_ref.descriptor),
+                    "declare void @{mangled_name}__set(%ref* byval, {field_type})",
+                    field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineArg),
                     mangled_name = mangle_field_name(field_class_name, field_name)
                 );
             }
@@ -85,14 +90,14 @@ pub(crate) fn gen_method(
     let method_name = consts.get_utf8(method.name_index).unwrap();
     print!(
         "\ndefine {return_type} @{mangled_name}(",
-        return_type = tlt_return_type(&method.descriptor.ret),
+        return_type = tlt_return_type(&method.descriptor.ret, TypePos::DefineRet),
         mangled_name = mangle_method_name(class_name, method_name, consts)
     );
     for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
         if i > 0 {
             print!(", ");
         }
-        print!("{} %v{}", tlt_type(&var.0), var.1);
+        print!("{} %v{}", tlt_type(&var.0, TypePos::DefineArg), var.1);
     }
     println!(") {{");
     for block in blocks.blocks() {
@@ -152,16 +157,16 @@ fn gen_expr_invoke(expr: &InvokeExpr, consts: &ConstantPool) {
     let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
     print!(
         "call {return_type} @{mangled_name}(",
-        return_type = tlt_return_type(&method_ref.descriptor.ret),
+        return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::CallRet),
         mangled_name = mangle_method_name(method_class_name, method_name, consts)
     );
     match expr.target {
-        InvokeTarget::Static => print!("i8* null"),
-        InvokeTarget::Special(ref var) => print!("i8* %v{}", var.1),
-        InvokeTarget::Virtual(ref var) => print!("i8* %v{}", var.1),
+        InvokeTarget::Static => print!("%ref* @nullref"),
+        InvokeTarget::Special(ref var) => print!("%ref* %v{}", var.1),
+        InvokeTarget::Virtual(ref var) => print!("%ref* %v{}", var.1),
     }
     for var in expr.args.iter() {
-        print!(", {} %v{}", tlt_type(&var.0), var.1);
+        print!(", {} %v{}", tlt_type(&var.0, TypePos::CallArg), var.1);
     }
     println!(")");
 }
@@ -172,8 +177,8 @@ fn gen_expr_get_static(index: ConstantIndex, consts: &ConstantPool) {
     let field_class = consts.get_class(field_ref.class_index).unwrap();
     let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
     println!(
-        "call {field_type} @{mangled_name}__get(i8* null)",
-        field_type = tlt_field_type(&field_ref.descriptor),
+        "call {field_type} @{mangled_name}__get(%ref* @nullref)",
+        field_type = tlt_field_type(&field_ref.descriptor, TypePos::CallRet),
         mangled_name = mangle_field_name(field_class_name, field_name)
     );
 }
@@ -195,7 +200,11 @@ fn gen_phi_nodes(block: &BasicBlock, blocks: &BlockGraph) {
         }
     }
     for (var, bindings) in phis {
-        print!("  %v{} = phi {} ", var.1, tlt_type(&var.0));
+        print!(
+            "  %v{} = phi {} ",
+            var.1,
+            tlt_type(&var.0, TypePos::CallRet)
+        );
         for (i, (out_var, addr)) in bindings.iter().enumerate() {
             if i > 0 {
                 print!(", ");
@@ -217,14 +226,21 @@ fn mangle_method_name(class_name: &str, mut method_name: &str, consts: &Constant
     format!("_Jm_{}_{}", class_name.replace("/", "_"), method_name)
 }
 
-fn tlt_return_type(return_type: &ReturnTypeDescriptor) -> &'static str {
+enum TypePos {
+    DefineRet,
+    DefineArg,
+    CallRet,
+    CallArg,
+}
+
+fn tlt_return_type(return_type: &ReturnTypeDescriptor, pos: TypePos) -> &'static str {
     match return_type {
         ReturnTypeDescriptor::Void => "void",
-        ReturnTypeDescriptor::Field(field_type) => tlt_field_type(field_type),
+        ReturnTypeDescriptor::Field(field_type) => tlt_field_type(field_type, pos),
     }
 }
 
-fn tlt_field_type(field_type: &FieldType) -> &'static str {
+fn tlt_field_type(field_type: &FieldType, pos: TypePos) -> &'static str {
     match field_type {
         FieldType::Base(base_type) => match base_type {
             BaseType::Boolean => "i32",
@@ -236,20 +252,29 @@ fn tlt_field_type(field_type: &FieldType) -> &'static str {
             BaseType::Float => "float",
             BaseType::Double => "double",
         },
-        FieldType::Object(_) => "i8*",
-        FieldType::Array(_) => "i8*",
+        FieldType::Object(_) | FieldType::Array(_) => match pos {
+            TypePos::DefineRet => "%ref",
+            TypePos::DefineArg => "%ref* byval",
+            TypePos::CallRet => "%ref",
+            TypePos::CallArg => "%ref*",
+        },
     }
 }
 
-fn tlt_type(t: &Type) -> &'static str {
+fn tlt_type(t: &Type, pos: TypePos) -> &'static str {
     match t.info {
         VerificationTypeInfo::Integer => "i32",
         VerificationTypeInfo::Long => "i64",
         VerificationTypeInfo::Float => "float",
         VerificationTypeInfo::Double => "double",
-        VerificationTypeInfo::Null => "i8*",
-        VerificationTypeInfo::Object(_) => "i8*",
-        VerificationTypeInfo::UninitializedThis => "i8*",
+        VerificationTypeInfo::Null
+        | VerificationTypeInfo::Object(_)
+        | VerificationTypeInfo::UninitializedThis => match pos {
+            TypePos::DefineRet => "%ref",
+            TypePos::DefineArg => "%ref* byval",
+            TypePos::CallRet => "%ref",
+            TypePos::CallArg => "%ref*",
+        },
         _ => unimplemented!(),
     }
 }
