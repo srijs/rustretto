@@ -83,6 +83,38 @@ impl FieldType {
             _ => bail!("unknown descriptor tag {}", tag),
         }
     }
+
+    pub fn to_string(&self) -> String {
+        let mut output = String::new();
+        let mut field_type = self;
+        loop {
+            match field_type {
+                FieldType::Base(base_type) => {
+                    match base_type {
+                        BaseType::Byte => output.push('B'),
+                        BaseType::Char => output.push('C'),
+                        BaseType::Double => output.push('D'),
+                        BaseType::Float => output.push('F'),
+                        BaseType::Int => output.push('I'),
+                        BaseType::Long => output.push('J'),
+                        BaseType::Short => output.push('S'),
+                        BaseType::Boolean => output.push('Z'),
+                    };
+                    return output;
+                }
+                FieldType::Object(object_type) => {
+                    output.push('L');
+                    output.push_str(&object_type.class_name);
+                    output.push(';');
+                    return output;
+                }
+                FieldType::Array(array_type) => {
+                    output.push('[');
+                    field_type = &*array_type.component_type;
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

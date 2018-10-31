@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use classfile::attrs::stack_map_table::VerificationTypeInfo;
-use classfile::descriptors::{BaseType, FieldType, ParameterDescriptor, ReturnTypeDescriptor};
+use classfile::descriptors::{
+    BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
+};
 use classfile::{constant_pool::Constant, Method};
 
 use super::*;
@@ -15,7 +17,15 @@ pub(crate) fn gen_main(class: &ClassFile) {
     println!("define i32 @main() {{");
     println!(
         "  call void @{}(%ref* @nullref, %ref* @nullref)",
-        mangle_method_name(class_name, "main", &class.constant_pool)
+        mangle_method_name(
+            class_name,
+            "main",
+            &[ParameterDescriptor::Field(FieldType::Array(ArrayType {
+                component_type: Box::new(FieldType::Object(ObjectType {
+                    class_name: "java.lang.String".to_owned()
+                }))
+            }))]
+        )
     );
     println!("  ret i32 0");
     println!("}}");
@@ -42,8 +52,11 @@ pub(crate) fn gen_prelude(class: &ClassFile) {
                 print!(
                     "declare {return_type} @{mangled_name}(",
                     return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::DefineRet),
-                    mangled_name =
-                        mangle_method_name(method_class_name, method_name, &class.constant_pool)
+                    mangled_name = mangle_method_name(
+                        method_class_name,
+                        method_name,
+                        &method_ref.descriptor.params
+                    )
                 );
                 print!("%ref* byval");
                 for ParameterDescriptor::Field(field) in method_ref.descriptor.params.iter() {
@@ -91,7 +104,7 @@ pub(crate) fn gen_method(
     print!(
         "\ndefine {return_type} @{mangled_name}(",
         return_type = tlt_return_type(&method.descriptor.ret, TypePos::DefineRet),
-        mangled_name = mangle_method_name(class_name, method_name, consts)
+        mangled_name = mangle_method_name(class_name, method_name, &method.descriptor.params)
     );
     for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
         if i > 0 {
@@ -158,7 +171,11 @@ fn gen_expr_invoke(expr: &InvokeExpr, consts: &ConstantPool) {
     print!(
         "call {return_type} @{mangled_name}(",
         return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::CallRet),
-        mangled_name = mangle_method_name(method_class_name, method_name, consts)
+        mangled_name = mangle_method_name(
+            method_class_name,
+            method_name,
+            &method_ref.descriptor.params
+        )
     );
     match expr.target {
         InvokeTarget::Static => print!("%ref* @nullref"),
@@ -219,11 +236,34 @@ fn mangle_field_name(class_name: &str, field_name: &str) -> String {
     format!("_Jf_{}_{}", class_name.replace("/", "_"), field_name)
 }
 
-fn mangle_method_name(class_name: &str, mut method_name: &str, consts: &ConstantPool) -> String {
-    if method_name == "<init>" {
-        method_name = "_init";
+fn mangle_method_name(
+    class_name: &str,
+    method_name: &str,
+    params: &[ParameterDescriptor],
+) -> String {
+    let mangled_class_name = mangle(class_name);
+    let mangled_method_name = match method_name {
+        "<init>" => "_init".to_owned(),
+        _ => mangle(method_name),
+    };
+    let mut mangled = format!("_Jm_{}_{}", mangled_class_name, mangled_method_name);
+    if params.len() > 0 {
+        mangled.push_str("__");
+        for ParameterDescriptor::Field(field_type) in params {
+            mangled.push_str(&mangle(&field_type.to_string()));
+        }
     }
-    format!("_Jm_{}_{}", class_name.replace("/", "_"), method_name)
+    return mangled;
+}
+
+fn mangle(input: &str) -> String {
+    let mut output = input.to_owned();
+    output = output.replace("_", "_1");
+    output = output.replace(";", "_2");
+    output = output.replace("[", "_3");
+    output = output.replace("/", "_");
+    output = output.replace(".", "_");
+    return output;
 }
 
 enum TypePos {

@@ -55,44 +55,12 @@ impl Type {
                 info: VerificationTypeInfo::Object(object_type.class_name),
             },
             FieldType::Array(array_type) => {
-                let class_name = array_type_to_class_name(&array_type);
+                let class_name = format!("[{}", array_type.component_type.to_string());
                 Type {
                     info: VerificationTypeInfo::Object(class_name),
                 }
             }
             _ => unimplemented!("unsupported field type {:?}", field_type),
-        }
-    }
-}
-
-pub fn array_type_to_class_name(array_type: &ArrayType) -> String {
-    let mut output = "[".to_owned();
-    let mut field_type = &*array_type.component_type;
-    loop {
-        match field_type {
-            FieldType::Base(base_type) => {
-                match base_type {
-                    BaseType::Byte => output.push('B'),
-                    BaseType::Char => output.push('C'),
-                    BaseType::Double => output.push('D'),
-                    BaseType::Float => output.push('F'),
-                    BaseType::Int => output.push('I'),
-                    BaseType::Long => output.push('J'),
-                    BaseType::Short => output.push('S'),
-                    BaseType::Boolean => output.push('Z'),
-                };
-                return output;
-            }
-            FieldType::Object(object_type) => {
-                output.push('L');
-                output.push_str(&object_type.class_name);
-                output.push(';');
-                return output;
-            }
-            FieldType::Array(array_type) => {
-                output.push('[');
-                field_type = &*array_type.component_type;
-            }
         }
     }
 }

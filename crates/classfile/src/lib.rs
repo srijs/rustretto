@@ -102,6 +102,11 @@ impl ClassFile {
     pub fn get_this_class(&self) -> &self::constant_pool::ClassConstant {
         self.constant_pool.get_class(self.this_class).unwrap()
     }
+
+    pub fn get_super_class(&self) -> Option<&self::constant_pool::ClassConstant> {
+        self.super_class
+            .map(|idx| self.constant_pool.get_class(idx).unwrap())
+    }
 }
 
 struct ClassFileParser<R> {
