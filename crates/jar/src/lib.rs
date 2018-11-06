@@ -1,4 +1,6 @@
 pub extern crate classfile;
+
+extern crate bytes;
 extern crate failure;
 extern crate zip;
 
@@ -6,6 +8,7 @@ use std::fs;
 use std::io::{Read, Seek};
 use std::path::Path;
 
+use bytes::{Bytes, IntoBuf};
 use classfile::ClassFile;
 use failure::Fallible;
 use zip::read::ZipArchive;
@@ -21,9 +24,11 @@ impl<R: Read + Seek> JarReader<R> {
         Ok(JarReader { archive })
     }
 
-    pub fn get_class_file(&mut self, name: &str) -> Fallible<ClassFile> {
-        let entry = self.archive.by_name(&format!("{}.class", name))?;
-        ClassFile::parse(entry)
+    pub fn get_class_entry(&mut self, name: &str) -> Fallible<ClassEntry> {
+        let mut file = self.archive.by_name(&format!("{}.class", name))?;
+        let mut data = vec![];
+        file.read_to_end(&mut data)?;
+        Ok(ClassEntry { bytes: data.into() })
     }
 }
 
@@ -31,5 +36,16 @@ impl JarReader<fs::File> {
     pub fn open<P: AsRef<Path>>(path: P) -> Fallible<Self> {
         let file = fs::File::open(path)?;
         JarReader::new(file)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ClassEntry {
+    bytes: Bytes,
+}
+
+impl ClassEntry {
+    pub fn decode(&self) -> Fallible<ClassFile> {
+        ClassFile::parse(self.bytes.clone().into_buf())
     }
 }

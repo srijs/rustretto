@@ -5,6 +5,7 @@ authors = ["Sam Rijs <srijs@airpost.net>"]
 workspace = "../.."
 
 [dependencies]
+bytes = "0.4.10"
 failure = "0.1.2"
 zip = "0.4.2"
 

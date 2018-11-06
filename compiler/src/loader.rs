@@ -5,15 +5,15 @@ use std::sync::{Arc, Mutex};
 use classfile::descriptors::{BaseType, FieldType};
 use classfile::ClassFile;
 use failure::Fallible;
-use jar::JarReader;
+use jar::{ClassEntry, JarReader};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Class {
-    File(ClassFile),
+    File(Arc<ClassFile>),
     Array(ArrayClass),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum ArrayClass {
     Primitive(BaseType),
     Complex(Box<Class>),
@@ -41,11 +41,11 @@ impl BootstrapClassLoader {
         })
     }
 
-    fn load_from_disk(&self, name: &str) -> Fallible<Class> {
+    fn load_entry_from_disk(&self, name: &str) -> Fallible<ClassEntry> {
         let mut readers = self.readers.lock().unwrap();
         for mut reader in readers.iter_mut() {
-            if let Ok(class_file) = reader.get_class_file(name) {
-                return Ok(Class::File(class_file));
+            if let Ok(class_entry) = reader.get_class_entry(name) {
+                return Ok(class_entry);
             }
         }
         Err(format_err!("class {} not found", name))
@@ -60,7 +60,9 @@ impl BootstrapClassLoader {
             }
             FieldType::Object(object_type) => {
                 let class_name = object_type.class_name.replace(".", "/");
-                let class = self.load_from_disk(&class_name)?;
+                let class_entry = self.load_entry_from_disk(&class_name)?;
+                let class_file = class_entry.decode()?;
+                let class = Class::File(Arc::new(class_file));
                 Ok(ArrayClass::Complex(Box::new(class)))
             }
         }
@@ -75,7 +77,9 @@ impl ClassLoader for BootstrapClassLoader {
             let array_class = self.load_array_by_component_type(field_type)?;
             Ok(Class::Array(array_class))
         } else {
-            self.load_from_disk(name)
+            let class_entry = self.load_entry_from_disk(name)?;
+            let class_file = class_entry.decode()?;
+            Ok(Class::File(Arc::new(class_file)))
         }
     }
 }

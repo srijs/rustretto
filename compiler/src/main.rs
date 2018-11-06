@@ -66,7 +66,7 @@ fn compile(c: Compile) -> Fallible<()> {
         class => bail!("unexpected class type {:?}", class),
     };
 
-    generate::gen_prelude(cf);
+    generate::gen_prelude(&cf);
     for method in cf.methods.iter() {
         let mut var_id_gen = VarIdGen::new();
         let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
