@@ -2,12 +2,14 @@ use std::collections::BTreeMap;
 
 use classfile::attrs::stack_map_table::VerificationTypeInfo;
 use classfile::descriptors::{
-    BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
+    ArrayType, BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
 };
-use classfile::{constant_pool::Constant, Method};
+use classfile::{constant_pool::Constant, ClassFile, ConstantIndex, ConstantPool, Method};
 
-use super::*;
-use graph::BlockGraph;
+use blocks::BlockGraph;
+use translate::{
+    BasicBlock, BranchStub, Expr, InvokeExpr, InvokeTarget, Statement, Type, VarId, VarIdGen,
+};
 
 pub(crate) fn gen_main(class: &ClassFile) {
     let class_name = class

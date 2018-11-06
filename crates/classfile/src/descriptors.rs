@@ -84,6 +84,10 @@ impl FieldType {
         }
     }
 
+    pub fn try_from_str(input: &str) -> Fallible<Self> {
+        Self::parse(input.as_bytes())
+    }
+
     pub fn to_string(&self) -> String {
         let mut output = String::new();
         let mut field_type = self;

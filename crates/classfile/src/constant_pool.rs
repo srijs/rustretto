@@ -152,7 +152,7 @@ impl<R: Read> ConstantPoolParser<R> {
     fn parse(&mut self, vec: &mut Vec<Constant>) -> Fallible<()> {
         let count = self.reader.read_u16::<BigEndian>()?;
         vec.reserve(count as usize - 1);
-        for _i in 1..count {
+        while vec.len() < count as usize - 1 {
             let tag = self.reader.read_u8()?;
             let info = match tag {
                 CONSTANT_CLASS => Constant::Class(self.parse_constant_class_info()?),

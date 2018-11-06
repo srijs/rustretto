@@ -99,6 +99,12 @@ impl ClassFile {
         })
     }
 
+    pub fn get_name(&self) -> &str {
+        self.constant_pool
+            .get_utf8(self.get_this_class().name_index)
+            .unwrap()
+    }
+
     pub fn get_this_class(&self) -> &self::constant_pool::ClassConstant {
         self.constant_pool.get_class(self.this_class).unwrap()
     }

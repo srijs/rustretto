@@ -10,6 +10,7 @@ use classfile::ClassFile;
 use failure::Fallible;
 use zip::read::ZipArchive;
 
+#[derive(Debug)]
 pub struct JarReader<R: Read + Seek> {
     archive: ZipArchive<R>,
 }
