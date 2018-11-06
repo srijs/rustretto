@@ -30,16 +30,19 @@ mod utils;
 
 use classes::ClassGraph;
 use frame::StackAndLocals;
-use loader::{Class, BootstrapClassLoader};
+use loader::{BootstrapClassLoader, Class};
 use translate::{Type, VarIdGen};
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "compile", about = "Compile JVM classfiles into a native executable.")]
+#[structopt(
+    name = "compile",
+    about = "Compile JVM classfiles into a native executable."
+)]
 struct Compile {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
     #[structopt(long = "jar", parse(from_os_str))]
-    jars: Vec<PathBuf>
+    jars: Vec<PathBuf>,
 }
 
 fn compile(c: Compile) -> Fallible<()> {
@@ -60,7 +63,7 @@ fn compile(c: Compile) -> Fallible<()> {
 
     let cf = match classes.get(&class_name).unwrap() {
         Class::File(class_file) => class_file,
-        class => bail!("unexpected class type {:?}", class)
+        class => bail!("unexpected class type {:?}", class),
     };
 
     generate::gen_prelude(cf);

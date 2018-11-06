@@ -2,8 +2,8 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use classfile::descriptors::{BaseType, FieldType};
 use classfile::ClassFile;
-use classfile::descriptors::{BaseType,FieldType};
 use failure::Fallible;
 use jar::JarReader;
 
@@ -16,7 +16,7 @@ pub(crate) enum Class {
 #[derive(Debug)]
 pub(crate) enum ArrayClass {
     Primitive(BaseType),
-    Complex(Box<Class>)
+    Complex(Box<Class>),
 }
 
 pub(crate) trait ClassLoader {
@@ -53,17 +53,17 @@ impl BootstrapClassLoader {
 
     fn load_array_by_component_type(&self, component_type: FieldType) -> Fallible<ArrayClass> {
         match component_type {
-                FieldType::Base(base_type) => Ok(ArrayClass::Primitive(base_type)),
-                FieldType::Array(array_type) => {
-                    let inner = self.load_array_by_component_type(*array_type.component_type)?;
-                    Ok(ArrayClass::Complex(Box::new(Class::Array(inner))))
-                },
-                FieldType::Object(object_type) => {
-                    let class_name = object_type.class_name.replace(".", "/");
-                    let class = self.load_from_disk(&class_name)?;
-                    Ok(ArrayClass::Complex(Box::new(class)))
-                }
+            FieldType::Base(base_type) => Ok(ArrayClass::Primitive(base_type)),
+            FieldType::Array(array_type) => {
+                let inner = self.load_array_by_component_type(*array_type.component_type)?;
+                Ok(ArrayClass::Complex(Box::new(Class::Array(inner))))
             }
+            FieldType::Object(object_type) => {
+                let class_name = object_type.class_name.replace(".", "/");
+                let class = self.load_from_disk(&class_name)?;
+                Ok(ArrayClass::Complex(Box::new(class)))
+            }
+        }
     }
 }
 

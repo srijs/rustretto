@@ -6,7 +6,7 @@ use failure::Fallible;
 use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableGraph;
 
-use loader::{Class, ArrayClass, ClassLoader};
+use loader::{ArrayClass, Class, ClassLoader};
 
 pub(crate) struct ClassGraph {
     inner: StableGraph<Class, ()>,
@@ -60,10 +60,10 @@ impl ClassGraph {
                                     Class::File(class_file) => {
                                         stack.push(class_file.constant_pool.clone());
                                         break;
-                                    },
+                                    }
                                     Class::Array(ArrayClass::Primitive(_)) => {
                                         break;
-                                    },
+                                    }
                                     Class::Array(ArrayClass::Complex(inner_class)) => {
                                         class = inner_class;
                                     }
