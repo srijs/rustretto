@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Read;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
@@ -19,16 +18,15 @@ pub struct Attributes {
 }
 
 impl Attributes {
-    pub(crate) fn parse<R: Read>(mut reader: R, consts: &ConstantPool) -> Fallible<Self> {
+    pub(crate) fn parse(mut reader: &mut ByteBuf, consts: &ConstantPool) -> Fallible<Self> {
         let count = reader.read_u16::<BigEndian>()?;
         let mut attrs = HashMap::with_capacity(count as usize);
         for _ in 0..count {
             let name_index = ConstantIndex::parse(&mut reader)?;
             let name = consts.get_utf8(name_index).unwrap();
             let len = reader.read_u32::<BigEndian>()?;
-            let mut info = vec![0u8; len as usize];
-            reader.read_exact(&mut info)?;
-            attrs.insert(name.into(), info.into());
+            let info = reader.split_to(len as usize);
+            attrs.insert(name.into(), info);
         }
         Ok(Attributes {
             attrs,

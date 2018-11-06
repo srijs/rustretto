@@ -8,7 +8,7 @@ use std::fs;
 use std::io::{Read, Seek};
 use std::path::Path;
 
-use bytes::{Bytes, IntoBuf};
+use bytes::Bytes;
 use classfile::ClassFile;
 use failure::Fallible;
 use zip::read::ZipArchive;
@@ -46,6 +46,6 @@ pub struct ClassEntry {
 
 impl ClassEntry {
     pub fn decode(&self) -> Fallible<ClassFile> {
-        ClassFile::parse(self.bytes.clone().into_buf())
+        ClassFile::parse_bytes(self.bytes.clone())
     }
 }

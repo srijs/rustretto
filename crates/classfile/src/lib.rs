@@ -72,8 +72,14 @@ pub struct ClassFile {
 }
 
 impl ClassFile {
-    pub fn parse<R: Read>(reader: R) -> Fallible<Self> {
-        let mut parser = ClassFileParser::new(reader);
+    pub fn parse<R: Read>(mut reader: R) -> Fallible<Self> {
+        let mut bytes = vec![];
+        reader.read_to_end(&mut bytes)?;
+        Self::parse_bytes(bytes.into())
+    }
+
+    pub fn parse_bytes(input: Bytes) -> Fallible<Self> {
+        let mut parser = ClassFileParser::new(input.into());
 
         parser.parse_magic()?;
         let version = parser.parse_version()?;
@@ -115,12 +121,12 @@ impl ClassFile {
     }
 }
 
-struct ClassFileParser<R> {
-    reader: R,
+struct ClassFileParser {
+    reader: ByteBuf,
 }
 
-impl<R: Read> ClassFileParser<R> {
-    fn new(reader: R) -> Self {
+impl ClassFileParser {
+    fn new(reader: ByteBuf) -> Self {
         ClassFileParser { reader }
     }
 
@@ -255,5 +261,11 @@ impl Read for ByteBuf {
 impl From<Vec<u8>> for ByteBuf {
     fn from(vec: Vec<u8>) -> Self {
         ByteBuf(vec.into())
+    }
+}
+
+impl From<Bytes> for ByteBuf {
+    fn from(bytes: Bytes) -> Self {
+        ByteBuf(bytes)
     }
 }
