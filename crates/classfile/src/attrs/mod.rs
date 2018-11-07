@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
@@ -13,20 +11,20 @@ pub use self::stack_map_table::StackMapTable;
 
 #[derive(Debug)]
 pub struct Attributes {
-    attrs: HashMap<String, ByteBuf>,
+    attrs: Vec<(String, ByteBuf)>,
     consts: ConstantPool,
 }
 
 impl Attributes {
     pub(crate) fn parse(mut reader: &mut ByteBuf, consts: &ConstantPool) -> Fallible<Self> {
         let count = reader.read_u16::<BigEndian>()?;
-        let mut attrs = HashMap::with_capacity(count as usize);
+        let mut attrs = Vec::with_capacity(count as usize);
         for _ in 0..count {
             let name_index = ConstantIndex::parse(&mut reader)?;
             let name = consts.get_utf8(name_index).unwrap();
             let len = reader.read_u32::<BigEndian>()?;
             let info = reader.split_to(len as usize);
-            attrs.insert(name.into(), info);
+            attrs.push((name.into(), info));
         }
         Ok(Attributes {
             attrs,
@@ -46,9 +44,12 @@ impl Attributes {
     }
 
     pub fn get_raw(&self, name: &str) -> Option<RawAttribute> {
-        self.attrs.get(name).map(|bytes| RawAttribute {
-            bytes: bytes.clone(),
-        })
+        self.attrs
+            .iter()
+            .find(|(s, _)| s == name)
+            .map(|(_, bytes)| RawAttribute {
+                bytes: bytes.clone(),
+            })
     }
 }
 
