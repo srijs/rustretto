@@ -30,6 +30,7 @@ mod utils;
 
 use classes::ClassGraph;
 use frame::StackAndLocals;
+use generate::CodeGen;
 use loader::{BootstrapClassLoader, Class};
 use translate::{Type, VarIdGen};
 
@@ -61,12 +62,16 @@ fn compile(c: Compile) -> Fallible<()> {
     let loader = BootstrapClassLoader::open(&c.jars)?;
     let classes = ClassGraph::build(class_file, &loader)?;
 
+    let codegen = CodeGen::new("target-jvm".into());
+
     let cf = match classes.get(&class_name).unwrap() {
         Class::File(class_file) => class_file,
         class => bail!("unexpected class type {:?}", class),
     };
 
-    generate::gen_prelude(&cf);
+    let mut classgen = codegen.generate_class(&cf)?;
+
+    classgen.gen_prelude()?;
     for method in cf.methods.iter() {
         let mut var_id_gen = VarIdGen::new();
         let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
@@ -93,9 +98,9 @@ fn compile(c: Compile) -> Fallible<()> {
             &cf.constant_pool,
             &mut var_id_gen,
         )?;
-        generate::gen_method(&cf, &method, &blocks, &cf.constant_pool, &mut var_id_gen);
+        classgen.gen_method(&method, &blocks, &cf.constant_pool, &mut var_id_gen)?;
     }
-    generate::gen_main(&cf);
+    classgen.gen_main()?;
     Ok(())
 }
 

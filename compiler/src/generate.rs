@@ -1,236 +1,321 @@
 use std::collections::BTreeMap;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use classfile::attrs::stack_map_table::VerificationTypeInfo;
 use classfile::descriptors::{
     ArrayType, BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
 };
 use classfile::{constant_pool::Constant, ClassFile, ConstantIndex, ConstantPool, Method};
+use failure::Fallible;
 
 use blocks::BlockGraph;
 use translate::{
     BasicBlock, BranchStub, Expr, InvokeExpr, InvokeTarget, Statement, Type, VarId, VarIdGen,
 };
 
-pub(crate) fn gen_main(class: &ClassFile) {
-    let class_name = class
-        .constant_pool
-        .get_utf8(class.get_this_class().name_index)
-        .unwrap();
-    println!("define i32 @main() {{");
-    println!(
-        "  call void @{}(%ref* @nullref, %ref* @nullref)",
-        mangle_method_name(
-            class_name,
-            "main",
-            &[ParameterDescriptor::Field(FieldType::Array(ArrayType {
-                component_type: Box::new(FieldType::Object(ObjectType {
-                    class_name: "java.lang.String".to_owned()
-                }))
-            }))]
-        )
-    );
-    println!("  ret i32 0");
-    println!("}}");
+pub(crate) struct CodeGen {
+    target_path: PathBuf,
 }
 
-pub(crate) fn gen_prelude(class: &ClassFile) {
-    println!("%ref = type {{ i8*, i8* }}");
-    println!("@nullref = private constant %ref {{ i8* null, i8* null }}");
+impl CodeGen {
+    pub fn new(target_path: PathBuf) -> Self {
+        CodeGen { target_path }
+    }
 
-    for index in class.constant_pool.indices() {
-        match class.constant_pool.get_info(index).unwrap() {
-            Constant::MethodRef(_) => {
-                print!("\n");
-                let method_ref = class.constant_pool.get_method_ref(index).unwrap();
-                let method_name = class.constant_pool.get_utf8(method_ref.name_index).unwrap();
-                let method_class = class
-                    .constant_pool
-                    .get_class(method_ref.class_index)
-                    .unwrap();
-                let method_class_name = class
-                    .constant_pool
-                    .get_utf8(method_class.name_index)
-                    .unwrap();
-                print!(
-                    "declare {return_type} @{mangled_name}(",
-                    return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::DefineRet),
-                    mangled_name = mangle_method_name(
-                        method_class_name,
-                        method_name,
-                        &method_ref.descriptor.params
-                    )
-                );
-                print!("%ref* byval");
-                for ParameterDescriptor::Field(field) in method_ref.descriptor.params.iter() {
-                    print!(", {}", tlt_field_type(field, TypePos::DefineArg));
+    pub fn generate_class(&self, class: &Arc<ClassFile>) -> Fallible<ClassCodeGen> {
+        let class_name = class
+            .constant_pool
+            .get_utf8(class.get_this_class().name_index)
+            .unwrap();
+        let file = File::create(self.target_path.join(format!("{}.ll", mangle(class_name))))?;
+        Ok(ClassCodeGen {
+            file,
+            class: class.clone(),
+        })
+    }
+}
+
+pub(crate) struct ClassCodeGen {
+    file: File,
+    class: Arc<ClassFile>,
+}
+
+impl ClassCodeGen {
+    pub(crate) fn gen_main(&mut self) -> Fallible<()> {
+        let class_name = self
+            .class
+            .constant_pool
+            .get_utf8(self.class.get_this_class().name_index)
+            .unwrap();
+        writeln!(self.file, "define i32 @main() {{")?;
+        writeln!(
+            self.file,
+            "  call void @{}(%ref* @nullref, %ref* @nullref)",
+            mangle_method_name(
+                class_name,
+                "main",
+                &[ParameterDescriptor::Field(FieldType::Array(ArrayType {
+                    component_type: Box::new(FieldType::Object(ObjectType {
+                        class_name: "java.lang.String".to_owned()
+                    }))
+                }))]
+            )
+        )?;
+        writeln!(self.file, "  ret i32 0")?;
+        writeln!(self.file, "}}")?;
+        Ok(())
+    }
+
+    pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
+        writeln!(self.file, "%ref = type {{ i8*, i8* }}")?;
+        writeln!(
+            self.file,
+            "@nullref = private constant %ref {{ i8* null, i8* null }}"
+        )?;
+
+        for index in self.class.constant_pool.indices() {
+            match self.class.constant_pool.get_info(index).unwrap() {
+                Constant::MethodRef(_) => {
+                    write!(self.file, "\n")?;
+                    let method_ref = self.class.constant_pool.get_method_ref(index).unwrap();
+                    let method_name = self
+                        .class
+                        .constant_pool
+                        .get_utf8(method_ref.name_index)
+                        .unwrap();
+                    let method_class = self
+                        .class
+                        .constant_pool
+                        .get_class(method_ref.class_index)
+                        .unwrap();
+                    let method_class_name = self
+                        .class
+                        .constant_pool
+                        .get_utf8(method_class.name_index)
+                        .unwrap();
+                    write!(
+                        self.file,
+                        "declare {return_type} @{mangled_name}(",
+                        return_type =
+                            tlt_return_type(&method_ref.descriptor.ret, TypePos::DefineRet),
+                        mangled_name = mangle_method_name(
+                            method_class_name,
+                            method_name,
+                            &method_ref.descriptor.params
+                        )
+                    )?;
+                    write!(self.file, "%ref* byval")?;
+                    for ParameterDescriptor::Field(field) in method_ref.descriptor.params.iter() {
+                        write!(self.file, ", {}", tlt_field_type(field, TypePos::DefineArg))?;
+                    }
+                    writeln!(self.file, ")")?;
                 }
-                println!(")");
+                Constant::FieldRef(_) => {
+                    write!(self.file, "\n")?;
+                    let field_ref = self.class.constant_pool.get_field_ref(index).unwrap();
+                    let field_name = self
+                        .class
+                        .constant_pool
+                        .get_utf8(field_ref.name_index)
+                        .unwrap();
+                    let field_class = self
+                        .class
+                        .constant_pool
+                        .get_class(field_ref.class_index)
+                        .unwrap();
+                    let field_class_name = self
+                        .class
+                        .constant_pool
+                        .get_utf8(field_class.name_index)
+                        .unwrap();
+                    writeln!(
+                        self.file,
+                        "declare {field_type} @{mangled_name}__get(%ref* byval)",
+                        field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineRet),
+                        mangled_name = mangle_field_name(field_class_name, field_name)
+                    )?;
+                    writeln!(
+                        self.file,
+                        "declare void @{mangled_name}__set(%ref* byval, {field_type})",
+                        field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineArg),
+                        mangled_name = mangle_field_name(field_class_name, field_name)
+                    )?;
+                }
+                _ => {}
             }
-            Constant::FieldRef(_) => {
-                print!("\n");
-                let field_ref = class.constant_pool.get_field_ref(index).unwrap();
-                let field_name = class.constant_pool.get_utf8(field_ref.name_index).unwrap();
-                let field_class = class
-                    .constant_pool
-                    .get_class(field_ref.class_index)
-                    .unwrap();
-                let field_class_name = class
-                    .constant_pool
-                    .get_utf8(field_class.name_index)
-                    .unwrap();
-                println!(
-                    "declare {field_type} @{mangled_name}__get(%ref* byval)",
-                    field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineRet),
-                    mangled_name = mangle_field_name(field_class_name, field_name)
-                );
-                println!(
-                    "declare void @{mangled_name}__set(%ref* byval, {field_type})",
-                    field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineArg),
-                    mangled_name = mangle_field_name(field_class_name, field_name)
-                );
-            }
-            _ => {}
         }
+        Ok(())
     }
-}
 
-pub(crate) fn gen_method(
-    class: &ClassFile,
-    method: &Method,
-    blocks: &BlockGraph,
-    consts: &ConstantPool,
-    var_id_gen: &mut VarIdGen,
-) {
-    let class_name = consts.get_utf8(class.get_this_class().name_index).unwrap();
-    let method_name = consts.get_utf8(method.name_index).unwrap();
-    print!(
-        "\ndefine {return_type} @{mangled_name}(",
-        return_type = tlt_return_type(&method.descriptor.ret, TypePos::DefineRet),
-        mangled_name = mangle_method_name(class_name, method_name, &method.descriptor.params)
-    );
-    for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
-        if i > 0 {
-            print!(", ");
-        }
-        print!("{} %v{}", tlt_type(&var.0, TypePos::DefineArg), var.1);
-    }
-    println!(") {{");
-    for block in blocks.blocks() {
-        gen_block(block, blocks, &class.constant_pool, var_id_gen);
-    }
-    println!("}}");
-}
-
-fn gen_block(
-    block: &BasicBlock,
-    blocks: &BlockGraph,
-    consts: &ConstantPool,
-    var_id_gen: &mut VarIdGen,
-) {
-    println!("B{}:", block.address);
-    gen_phi_nodes(block, blocks);
-    for stmt in block.statements.iter() {
-        gen_statement(stmt, consts);
-    }
-    match &block.branch_stub {
-        BranchStub::Goto(addr) => println!("  br label %B{}", addr),
-        BranchStub::Return(None) => println!("  ret void"),
-        BranchStub::IfEq(var, if_addr, else_addr) => {
-            let tmp = var_id_gen.gen(Type::int());
-            println!("  %tmp{} = icmp eq i32 0, %v{}", tmp.1, var.1);
-            println!(
-                "  br i1 %tmp{}, label %B{}, label %B{}",
-                tmp.1, if_addr, else_addr
-            );
-        }
-        _ => unimplemented!(),
-    }
-}
-
-fn gen_statement(stmt: &Statement, consts: &ConstantPool) {
-    if let Some(ref var) = stmt.assign {
-        print!("  %v{} = ", var.1);
-    } else {
-        print!("  ");
-    }
-    gen_expr(&stmt.expression, consts)
-}
-
-fn gen_expr(expr: &Expr, consts: &ConstantPool) {
-    match expr {
-        Expr::ConstInt(i) => println!("and i32 {}, {}", i, i),
-        Expr::GetStatic(index) => gen_expr_get_static(*index, consts),
-        Expr::Invoke(subexpr) => gen_expr_invoke(subexpr, consts),
-        _ => println!("select i1 true, i8* undef, i8* undef; {:?}", expr),
-    }
-}
-
-fn gen_expr_invoke(expr: &InvokeExpr, consts: &ConstantPool) {
-    let method_ref = consts.get_method_ref(expr.index).unwrap();
-    let method_name = consts.get_utf8(method_ref.name_index).unwrap();
-    let method_class = consts.get_class(method_ref.class_index).unwrap();
-    let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
-    print!(
-        "call {return_type} @{mangled_name}(",
-        return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::CallRet),
-        mangled_name = mangle_method_name(
-            method_class_name,
-            method_name,
-            &method_ref.descriptor.params
-        )
-    );
-    match expr.target {
-        InvokeTarget::Static => print!("%ref* @nullref"),
-        InvokeTarget::Special(ref var) => print!("%ref* %v{}", var.1),
-        InvokeTarget::Virtual(ref var) => print!("%ref* %v{}", var.1),
-    }
-    for var in expr.args.iter() {
-        print!(", {} %v{}", tlt_type(&var.0, TypePos::CallArg), var.1);
-    }
-    println!(")");
-}
-
-fn gen_expr_get_static(index: ConstantIndex, consts: &ConstantPool) {
-    let field_ref = consts.get_field_ref(index).unwrap();
-    let field_name = consts.get_utf8(field_ref.name_index).unwrap();
-    let field_class = consts.get_class(field_ref.class_index).unwrap();
-    let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
-    println!(
-        "call {field_type} @{mangled_name}__get(%ref* @nullref)",
-        field_type = tlt_field_type(&field_ref.descriptor, TypePos::CallRet),
-        mangled_name = mangle_field_name(field_class_name, field_name)
-    );
-}
-
-fn gen_phi_nodes(block: &BasicBlock, blocks: &BlockGraph) {
-    let mut phis = BTreeMap::<VarId, Vec<(VarId, u32)>>::new();
-    for incoming_block in blocks.incoming(block.address) {
-        for (i, out_var) in incoming_block.outgoing.stack.iter().enumerate() {
-            let var = &block.incoming.stack[i];
-            phis.entry(var.clone())
-                .or_default()
-                .push((out_var.clone(), incoming_block.address));
-        }
-        for (i, out_var) in incoming_block.outgoing.locals.iter() {
-            let var = &block.incoming.locals[i];
-            phis.entry(var.clone())
-                .or_default()
-                .push((out_var.clone(), incoming_block.address));
-        }
-    }
-    for (var, bindings) in phis {
-        print!(
-            "  %v{} = phi {} ",
-            var.1,
-            tlt_type(&var.0, TypePos::CallRet)
-        );
-        for (i, (out_var, addr)) in bindings.iter().enumerate() {
+    pub(crate) fn gen_method(
+        &mut self,
+        method: &Method,
+        blocks: &BlockGraph,
+        consts: &ConstantPool,
+        var_id_gen: &mut VarIdGen,
+    ) -> Fallible<()> {
+        let class_name = consts
+            .get_utf8(self.class.get_this_class().name_index)
+            .unwrap();
+        let method_name = consts.get_utf8(method.name_index).unwrap();
+        write!(
+            self.file,
+            "\ndefine {return_type} @{mangled_name}(",
+            return_type = tlt_return_type(&method.descriptor.ret, TypePos::DefineRet),
+            mangled_name = mangle_method_name(class_name, method_name, &method.descriptor.params)
+        )?;
+        for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
             if i > 0 {
-                print!(", ");
+                write!(self.file, ", ")?;
             }
-            print!("[ %v{}, %B{} ]", out_var.1, addr);
+            write!(
+                self.file,
+                "{} %v{}",
+                tlt_type(&var.0, TypePos::DefineArg),
+                var.1
+            )?;
         }
-        println!("");
+        writeln!(self.file, ") {{")?;
+        for block in blocks.blocks() {
+            self.gen_block(block, blocks, consts, var_id_gen)?;
+        }
+        writeln!(self.file, "}}")?;
+        Ok(())
+    }
+
+    fn gen_block(
+        &mut self,
+        block: &BasicBlock,
+        blocks: &BlockGraph,
+        consts: &ConstantPool,
+        var_id_gen: &mut VarIdGen,
+    ) -> Fallible<()> {
+        writeln!(self.file, "B{}:", block.address)?;
+        self.gen_phi_nodes(block, blocks)?;
+        for stmt in block.statements.iter() {
+            self.gen_statement(stmt, consts)?;
+        }
+        match &block.branch_stub {
+            BranchStub::Goto(addr) => writeln!(self.file, "  br label %B{}", addr)?,
+            BranchStub::Return(None) => writeln!(self.file, "  ret void")?,
+            BranchStub::IfEq(var, if_addr, else_addr) => {
+                let tmp = var_id_gen.gen(Type::int());
+                writeln!(self.file, "  %tmp{} = icmp eq i32 0, %v{}", tmp.1, var.1)?;
+                writeln!(
+                    self.file,
+                    "  br i1 %tmp{}, label %B{}, label %B{}",
+                    tmp.1, if_addr, else_addr
+                )?;
+            }
+            _ => unimplemented!(),
+        }
+        Ok(())
+    }
+
+    fn gen_statement(&mut self, stmt: &Statement, consts: &ConstantPool) -> Fallible<()> {
+        if let Some(ref var) = stmt.assign {
+            write!(self.file, "  %v{} = ", var.1)?;
+        } else {
+            write!(self.file, "  ")?;
+        }
+        self.gen_expr(&stmt.expression, consts)
+    }
+
+    fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool) -> Fallible<()> {
+        match expr {
+            Expr::ConstInt(i) => writeln!(self.file, "and i32 {}, {}", i, i)?,
+            Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts)?,
+            Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts)?,
+            _ => writeln!(
+                self.file,
+                "select i1 true, i8* undef, i8* undef; {:?}",
+                expr
+            )?,
+        }
+        Ok(())
+    }
+
+    fn gen_expr_invoke(&mut self, expr: &InvokeExpr, consts: &ConstantPool) -> Fallible<()> {
+        let method_ref = consts.get_method_ref(expr.index).unwrap();
+        let method_name = consts.get_utf8(method_ref.name_index).unwrap();
+        let method_class = consts.get_class(method_ref.class_index).unwrap();
+        let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
+        write!(
+            self.file,
+            "call {return_type} @{mangled_name}(",
+            return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::CallRet),
+            mangled_name = mangle_method_name(
+                method_class_name,
+                method_name,
+                &method_ref.descriptor.params
+            )
+        )?;
+        match expr.target {
+            InvokeTarget::Static => write!(self.file, "%ref* @nullref")?,
+            InvokeTarget::Special(ref var) => write!(self.file, "%ref* %v{}", var.1)?,
+            InvokeTarget::Virtual(ref var) => write!(self.file, "%ref* %v{}", var.1)?,
+        };
+        for var in expr.args.iter() {
+            write!(
+                self.file,
+                ", {} %v{}",
+                tlt_type(&var.0, TypePos::CallArg),
+                var.1
+            )?;
+        }
+        writeln!(self.file, ")")?;
+        Ok(())
+    }
+
+    fn gen_expr_get_static(&mut self, index: ConstantIndex, consts: &ConstantPool) -> Fallible<()> {
+        let field_ref = consts.get_field_ref(index).unwrap();
+        let field_name = consts.get_utf8(field_ref.name_index).unwrap();
+        let field_class = consts.get_class(field_ref.class_index).unwrap();
+        let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
+        writeln!(
+            self.file,
+            "call {field_type} @{mangled_name}__get(%ref* @nullref)",
+            field_type = tlt_field_type(&field_ref.descriptor, TypePos::CallRet),
+            mangled_name = mangle_field_name(field_class_name, field_name)
+        )?;
+        Ok(())
+    }
+
+    fn gen_phi_nodes(&mut self, block: &BasicBlock, blocks: &BlockGraph) -> Fallible<()> {
+        let mut phis = BTreeMap::<VarId, Vec<(VarId, u32)>>::new();
+        for incoming_block in blocks.incoming(block.address) {
+            for (i, out_var) in incoming_block.outgoing.stack.iter().enumerate() {
+                let var = &block.incoming.stack[i];
+                phis.entry(var.clone())
+                    .or_default()
+                    .push((out_var.clone(), incoming_block.address));
+            }
+            for (i, out_var) in incoming_block.outgoing.locals.iter() {
+                let var = &block.incoming.locals[i];
+                phis.entry(var.clone())
+                    .or_default()
+                    .push((out_var.clone(), incoming_block.address));
+            }
+        }
+        for (var, bindings) in phis {
+            write!(
+                self.file,
+                "  %v{} = phi {} ",
+                var.1,
+                tlt_type(&var.0, TypePos::CallRet)
+            )?;
+            for (i, (out_var, addr)) in bindings.iter().enumerate() {
+                if i > 0 {
+                    write!(self.file, ", ")?;
+                }
+                write!(self.file, "[ %v{}, %B{} ]", out_var.1, addr)?;
+            }
+            writeln!(self.file, "")?;
+        }
+        Ok(())
     }
 }
 
