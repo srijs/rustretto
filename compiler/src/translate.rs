@@ -1,8 +1,7 @@
 use std::fmt;
 
-use classfile::attrs::stack_map_table::VerificationTypeInfo;
 use classfile::constant_pool::Constant;
-use classfile::descriptors::{FieldType, ReturnTypeDescriptor};
+use classfile::descriptors::ReturnTypeDescriptor;
 use classfile::instructions::{Disassembler, Instr};
 use classfile::{ConstantIndex, ConstantPool};
 use failure::Fallible;
@@ -10,54 +9,8 @@ use failure::Fallible;
 use blocks::BlockGraph;
 use disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
 use frame::StackAndLocals;
+use types::Type;
 use utils::MinHeap;
-
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Type {
-    pub info: VerificationTypeInfo,
-}
-
-impl Type {
-    pub fn int() -> Self {
-        Type {
-            info: VerificationTypeInfo::Integer,
-        }
-    }
-
-    pub fn string() -> Self {
-        Type {
-            info: VerificationTypeInfo::Object("java.lang.String".to_owned()),
-        }
-    }
-
-    pub fn from_field_type(field_type: FieldType) -> Self {
-        match field_type {
-            FieldType::Base(base_type) => match base_type {
-                classfile::descriptors::BaseType::Boolean => Self::int(),
-                _ => unimplemented!("unsupported base type {:?}", base_type),
-            },
-            FieldType::Object(object_type) => Type {
-                info: VerificationTypeInfo::Object(object_type.class_name),
-            },
-            FieldType::Array(array_type) => {
-                let class_name = format!("[{}", array_type.component_type.to_string());
-                Type {
-                    info: VerificationTypeInfo::Object(class_name),
-                }
-            }
-        }
-    }
-}
-
-impl fmt::Debug for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.info {
-            VerificationTypeInfo::Integer => write!(f, "int"),
-            VerificationTypeInfo::Object(ref name) => write!(f, "{}", name),
-            _ => self.info.fmt(f),
-        }
-    }
-}
 
 #[derive(Debug)]
 struct BlockId(usize);

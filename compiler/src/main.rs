@@ -12,7 +12,6 @@ extern crate structopt;
 use std::fs;
 use std::path::PathBuf;
 
-use classfile::attrs::stack_map_table::VerificationTypeInfo;
 use classfile::attrs::Code;
 use classfile::descriptors::ParameterDescriptor;
 use classfile::ClassFile;
@@ -26,13 +25,15 @@ mod frame;
 mod generate;
 mod loader;
 mod translate;
+mod types;
 mod utils;
 
 use classes::ClassGraph;
 use frame::StackAndLocals;
 use generate::CodeGen;
 use loader::{BootstrapClassLoader, Class};
-use translate::{Type, VarIdGen};
+use translate::VarIdGen;
+use types::Type;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -77,14 +78,10 @@ fn compile(c: Compile) -> Fallible<()> {
         let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
         let mut args = Vec::new();
         if name == "<init>" {
-            let arg_type = Type {
-                info: VerificationTypeInfo::UninitializedThis,
-            };
+            let arg_type = Type::UninitializedThis;
             args.push(var_id_gen.gen(arg_type));
         } else {
-            let arg_type = Type {
-                info: VerificationTypeInfo::Object(class_name.to_owned()),
-            };
+            let arg_type = Type::Object(class_name.to_owned());
             args.push(var_id_gen.gen(arg_type));
         }
         for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {

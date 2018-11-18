@@ -4,7 +4,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use classfile::attrs::stack_map_table::VerificationTypeInfo;
 use classfile::descriptors::{
     ArrayType, BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
 };
@@ -13,8 +12,9 @@ use failure::Fallible;
 
 use blocks::BlockGraph;
 use translate::{
-    BasicBlock, BranchStub, Expr, InvokeExpr, InvokeTarget, Statement, Type, VarId, VarIdGen,
+    BasicBlock, BranchStub, Expr, InvokeExpr, InvokeTarget, Statement, VarId, VarIdGen,
 };
+use types::Type;
 
 pub(crate) struct CodeGen {
     target_path: PathBuf,
@@ -389,14 +389,12 @@ fn tlt_field_type(field_type: &FieldType, pos: TypePos) -> &'static str {
 }
 
 fn tlt_type(t: &Type, pos: TypePos) -> &'static str {
-    match t.info {
-        VerificationTypeInfo::Integer => "i32",
-        VerificationTypeInfo::Long => "i64",
-        VerificationTypeInfo::Float => "float",
-        VerificationTypeInfo::Double => "double",
-        VerificationTypeInfo::Null
-        | VerificationTypeInfo::Object(_)
-        | VerificationTypeInfo::UninitializedThis => match pos {
+    match t {
+        Type::Integer => "i32",
+        Type::Long => "i64",
+        Type::Float => "float",
+        Type::Double => "double",
+        Type::Null | Type::Object(_) | Type::UninitializedThis => match pos {
             TypePos::DefineRet => "%ref",
             TypePos::DefineArg => "%ref* byval",
             TypePos::CallRet => "%ref",
