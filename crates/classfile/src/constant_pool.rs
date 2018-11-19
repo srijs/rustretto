@@ -1,14 +1,14 @@
 use std::fmt;
 use std::io::Read;
-use std::ops::Index;
+use std::ops::{Deref, Index};
 use std::sync::Arc;
 
 use byteorder::{BigEndian, ReadBytesExt};
-use cesu8::from_java_cesu8;
 use failure::Fallible;
 
 use super::descriptors::{FieldType, MethodDescriptor};
 use super::{FieldRef, MethodRef};
+use buffer::{ByteBuf, StrBuf};
 
 const CONSTANT_CLASS: u8 = 7;
 const CONSTANT_FIELD_REF: u8 = 9;
@@ -31,7 +31,7 @@ pub struct ConstantPool {
 }
 
 impl ConstantPool {
-    pub(crate) fn parse<R: Read>(reader: R) -> Fallible<Self> {
+    pub(crate) fn parse(reader: &mut ByteBuf) -> Fallible<Self> {
         let mut parser = ConstantPoolParser::new(reader);
 
         let mut vec = Vec::new();
@@ -53,8 +53,8 @@ impl ConstantPool {
     }
 
     pub fn get_utf8(&self, idx: ConstantIndex) -> Option<&str> {
-        if let Some(&Constant::Utf8(Utf8Constant { ref string })) = self.get_info(idx) {
-            Some(string)
+        if let Some(&Constant::Utf8(ref strc)) = self.get_info(idx) {
+            Some(&strc)
         } else {
             None
         }
@@ -140,12 +140,12 @@ impl Index<ConstantIndex> for ConstantPool {
     }
 }
 
-struct ConstantPoolParser<R> {
-    reader: R,
+struct ConstantPoolParser<'a> {
+    reader: &'a mut ByteBuf,
 }
 
-impl<R: Read> ConstantPoolParser<R> {
-    pub fn new(reader: R) -> Self {
+impl<'a> ConstantPoolParser<'a> {
+    pub fn new(reader: &'a mut ByteBuf) -> Self {
         ConstantPoolParser { reader }
     }
 
@@ -259,11 +259,8 @@ impl<R: Read> ConstantPoolParser<R> {
 
     fn parse_constant_utf8_info(&mut self) -> Fallible<Utf8Constant> {
         let len = self.reader.read_u16::<BigEndian>()?;
-        let mut bytes = vec![0u8; len as usize];
-        self.reader.read_exact(&mut bytes)?;
-        Ok(Utf8Constant {
-            string: from_java_cesu8(&bytes)?.into_owned(),
-        })
+        let bytes = self.reader.split_to(len as usize);
+        Ok(Utf8Constant(StrBuf::from_java_cesu8(&bytes)?))
     }
 
     fn parse_constant_method_handle_info(&mut self) -> Fallible<MethodHandleConstant> {
@@ -363,13 +360,19 @@ pub struct NameAndTypeConstant {
     pub descriptor_index: ConstantIndex,
 }
 
-pub struct Utf8Constant {
-    pub string: String,
+pub struct Utf8Constant(StrBuf);
+
+impl Deref for Utf8Constant {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
 }
 
 impl fmt::Debug for Utf8Constant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.string, f)
+        fmt::Debug::fmt(&self.0, f)
     }
 }
 
