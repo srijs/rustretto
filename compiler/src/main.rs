@@ -48,8 +48,6 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let jars = vec![home.join("jre/lib/rt.jar"), home.join("jre/lib/jce.jar")];
-
     let file = fs::File::open(c.input)?;
     let class_file = ClassFile::parse(file)?;
 
@@ -62,7 +60,7 @@ fn compile(c: Compile) -> Fallible<()> {
             .to_owned()
     };
 
-    let loader = BootstrapClassLoader::open(&jars)?;
+    let loader = BootstrapClassLoader::open(home)?;
     let classes = ClassGraph::build(class_file, &loader)?;
     let codegen = CodeGen::new("target-jvm".into());
     let mut compiler = Compiler::new(classes, codegen);

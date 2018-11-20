@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use classfile::descriptors::{BaseType, FieldType};
@@ -29,13 +29,19 @@ pub(crate) struct BootstrapClassLoader {
 }
 
 impl BootstrapClassLoader {
-    pub fn open(paths: &[PathBuf]) -> Fallible<Self> {
+    pub fn open<P: AsRef<Path>>(home: P) -> Fallible<Self> {
+        let paths = &[
+            home.as_ref().join("jre/lib/rt.jar"),
+            home.as_ref().join("jre/lib/jce.jar"),
+        ];
+
         let mut readers = vec![];
         for path in paths {
             let file = File::open(path)?;
             let reader = JarReader::new(file)?;
             readers.push(reader);
         }
+
         Ok(Self {
             readers: Arc::new(Mutex::new(readers)),
         })
