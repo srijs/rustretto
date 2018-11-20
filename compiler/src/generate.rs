@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::fmt;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -54,7 +53,7 @@ impl ClassCodeGen {
         writeln!(self.file, "define i32 @main() {{")?;
         writeln!(
             self.file,
-            "  call void @{}(%ref {{ i8* null, i8* null }}, %ref {{ i8* null, i8* null }})",
+            "  call void @{}(%ref zeroinitializer, %ref zeroinitializer)",
             mangle_method_name(
                 class_name,
                 "main",
@@ -225,23 +224,23 @@ impl ClassCodeGen {
 
     fn gen_statement(&mut self, stmt: &Statement, consts: &ConstantPool) -> Fallible<()> {
         if let Some(ref var) = stmt.assign {
-            self.gen_expr(Assign::Assign("v", var.1), &stmt.expression, consts)?;
+            write!(self.file, "  %v{} = ", var.1)?;
         } else {
-            self.gen_expr(Assign::NoAssign, &stmt.expression, consts)?;
+            write!(self.file, "  ")?;
         }
-        Ok(())
+        self.gen_expr(&stmt.expression, consts)
     }
 
-    fn gen_expr(&mut self, assign: Assign, expr: &Expr, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool) -> Fallible<()> {
         match expr {
-            Expr::ConstInt(i) => writeln!(self.file, "  {}and i32 {}, {}", assign, i, i)?,
-            Expr::ConstString(index) => self.gen_load_string(assign, *index, consts)?,
-            Expr::GetStatic(index) => self.gen_expr_get_static(assign, *index, consts)?,
-            Expr::Invoke(subexpr) => self.gen_expr_invoke(assign, subexpr, consts)?,
+            Expr::ConstInt(i) => writeln!(self.file, "and i32 {}, {}", i, i)?,
+            Expr::ConstString(index) => self.gen_load_string(*index, consts)?,
+            Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts)?,
+            Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts)?,
             _ => writeln!(
                 self.file,
-                "  {}select i1 true, i8* undef, i8* undef; {:?}",
-                assign, expr
+                "select i1 true, i8* undef, i8* undef; {:?}",
+                expr
             )?,
         }
         Ok(())
@@ -249,24 +248,16 @@ impl ClassCodeGen {
 
     fn gen_load_string(
         &mut self,
-        assign: Assign,
         index: ConstantIndex,
         consts: &ConstantPool,
     ) -> Fallible<()> {
         let len = consts.get_utf8(index).unwrap().len();
         writeln!(
             self.file,
-            "  %strptr{} = getelementptr [{} x i8], [{} x i8]* @.str{}, i64 0, i64 0",
-            index.as_u16(),
-            len + 1,
-            len + 1,
-            index.as_u16()
-        )?;
-        writeln!(
-            self.file,
-            "  {}call %ref @_Jrt_ldstr(i32 {}, i8* %strptr{})",
-            assign,
+            "call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
             len,
+            len + 1,
+            len + 1,
             index.as_u16()
         )?;
         Ok(())
@@ -274,7 +265,6 @@ impl ClassCodeGen {
 
     fn gen_expr_invoke(
         &mut self,
-        assign: Assign,
         expr: &InvokeExpr,
         consts: &ConstantPool,
     ) -> Fallible<()> {
@@ -284,8 +274,7 @@ impl ClassCodeGen {
         let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
         write!(
             self.file,
-            "  {}call {return_type} @{mangled_name}(",
-            assign,
+            "call {return_type} @{mangled_name}(",
             return_type = tlt_return_type(&method_ref.descriptor.ret),
             mangled_name = mangle_method_name(
                 method_class_name,
@@ -294,7 +283,7 @@ impl ClassCodeGen {
             )
         )?;
         match expr.target {
-            InvokeTarget::Static => write!(self.file, "%ref {{ i8* null, i8* null }}")?,
+            InvokeTarget::Static => write!(self.file, "%ref zeroinitializer")?,
             InvokeTarget::Special(ref var) => write!(self.file, "%ref %v{}", var.1)?,
             InvokeTarget::Virtual(ref var) => write!(self.file, "%ref %v{}", var.1)?,
         };
@@ -307,7 +296,6 @@ impl ClassCodeGen {
 
     fn gen_expr_get_static(
         &mut self,
-        assign: Assign,
         index: ConstantIndex,
         consts: &ConstantPool,
     ) -> Fallible<()> {
@@ -317,8 +305,7 @@ impl ClassCodeGen {
         let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
         writeln!(
             self.file,
-            "  {}call {field_type} @{mangled_name}__get(%ref {{ i8* null, i8* null }})",
-            assign,
+            "call {field_type} @{mangled_name}__get(%ref zeroinitializer)",
             field_type = tlt_field_type(&field_ref.descriptor),
             mangled_name = mangle_field_name(field_class_name, field_name)
         )?;
@@ -387,20 +374,6 @@ fn mangle(input: &str) -> String {
     output = output.replace("/", "_");
     output = output.replace(".", "_");
     return output;
-}
-
-enum Assign {
-    NoAssign,
-    Assign(&'static str, u64),
-}
-
-impl fmt::Display for Assign {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Assign::NoAssign => Ok(()),
-            Assign::Assign(v, n) => write!(f, "%{}{} = ", v, n),
-        }
-    }
 }
 
 fn tlt_return_type(return_type: &ReturnTypeDescriptor) -> &'static str {
