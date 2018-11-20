@@ -9,6 +9,7 @@ extern crate env_logger;
 #[macro_use]
 extern crate structopt;
 
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -18,6 +19,7 @@ use structopt::StructOpt;
 
 mod blocks;
 mod classes;
+mod compile;
 mod disasm;
 mod frame;
 mod generate;
@@ -25,12 +27,11 @@ mod loader;
 mod translate;
 mod types;
 mod utils;
-mod compile;
 
 use classes::ClassGraph;
+use compile::Compiler;
 use generate::CodeGen;
 use loader::BootstrapClassLoader;
-use compile::Compiler;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -40,11 +41,15 @@ use compile::Compiler;
 struct Compile {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
-    #[structopt(long = "jar", parse(from_os_str))]
-    jars: Vec<PathBuf>,
 }
 
 fn compile(c: Compile) -> Fallible<()> {
+    let home = PathBuf::from(
+        env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
+    );
+
+    let jars = vec![home.join("jre/lib/rt.jar"), home.join("jre/lib/jce.jar")];
+
     let file = fs::File::open(c.input)?;
     let class_file = ClassFile::parse(file)?;
 
@@ -57,7 +62,7 @@ fn compile(c: Compile) -> Fallible<()> {
             .to_owned()
     };
 
-    let loader = BootstrapClassLoader::open(&c.jars)?;
+    let loader = BootstrapClassLoader::open(&jars)?;
     let classes = ClassGraph::build(class_file, &loader)?;
     let codegen = CodeGen::new("target-jvm".into());
     let mut compiler = Compiler::new(classes, codegen);

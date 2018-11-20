@@ -1,25 +1,23 @@
 use failure::Fallible;
 
-use classfile::descriptors::ParameterDescriptor;
 use classfile::attrs::Code;
+use classfile::descriptors::ParameterDescriptor;
 
-use loader::Class;
 use classes::ClassGraph;
-use generate::CodeGen;
-use types::Type;
 use frame::StackAndLocals;
+use generate::CodeGen;
+use loader::Class;
 use translate::{self, VarIdGen};
+use types::Type;
 
 pub(crate) struct Compiler {
     classes: ClassGraph,
-    codegen: CodeGen
+    codegen: CodeGen,
 }
 
 impl Compiler {
     pub fn new(classes: ClassGraph, codegen: CodeGen) -> Self {
-        Self {
-            classes, codegen
-        }
+        Self { classes, codegen }
     }
 
     pub fn compile(&mut self, class_name: &str) -> Fallible<()> {
