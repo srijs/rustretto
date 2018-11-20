@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -53,7 +54,7 @@ impl ClassCodeGen {
         writeln!(self.file, "define i32 @main() {{")?;
         writeln!(
             self.file,
-            "  call void @{}(%ref* @nullref, %ref* @nullref)",
+            "  call void @{}(%ref {{ i8* null, i8* null }}, %ref {{ i8* null, i8* null }})",
             mangle_method_name(
                 class_name,
                 "main",
@@ -71,13 +72,26 @@ impl ClassCodeGen {
 
     pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
         writeln!(self.file, "%ref = type {{ i8*, i8* }}")?;
-        writeln!(
-            self.file,
-            "@nullref = private constant %ref {{ i8* null, i8* null }}"
-        )?;
+
+        writeln!(self.file, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
 
         for index in self.class.constant_pool.indices() {
             match self.class.constant_pool.get_info(index).unwrap() {
+                Constant::String(string_const) => {
+                    let utf8_index = string_const.string_index;
+                    write!(self.file, "\n")?;
+                    let utf8 = self.class.constant_pool.get_utf8(utf8_index).unwrap();
+                    write!(
+                        self.file,
+                        "@.str{} = internal constant [{} x i8] [",
+                        utf8_index.as_u16(),
+                        utf8.len() + 1
+                    )?;
+                    for byte in utf8.as_bytes() {
+                        write!(self.file, " i8 {},", byte)?;
+                    }
+                    writeln!(self.file, " i8 0 ]")?;
+                }
                 Constant::MethodRef(_) => {
                     write!(self.file, "\n")?;
                     let method_ref = self.class.constant_pool.get_method_ref(index).unwrap();
@@ -99,17 +113,16 @@ impl ClassCodeGen {
                     write!(
                         self.file,
                         "declare {return_type} @{mangled_name}(",
-                        return_type =
-                            tlt_return_type(&method_ref.descriptor.ret, TypePos::DefineRet),
+                        return_type = tlt_return_type(&method_ref.descriptor.ret),
                         mangled_name = mangle_method_name(
                             method_class_name,
                             method_name,
                             &method_ref.descriptor.params
                         )
                     )?;
-                    write!(self.file, "%ref* byval")?;
+                    write!(self.file, "%ref")?;
                     for ParameterDescriptor::Field(field) in method_ref.descriptor.params.iter() {
-                        write!(self.file, ", {}", tlt_field_type(field, TypePos::DefineArg))?;
+                        write!(self.file, ", {}", tlt_field_type(field))?;
                     }
                     writeln!(self.file, ")")?;
                 }
@@ -133,14 +146,14 @@ impl ClassCodeGen {
                         .unwrap();
                     writeln!(
                         self.file,
-                        "declare {field_type} @{mangled_name}__get(%ref* byval)",
-                        field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineRet),
+                        "declare {field_type} @{mangled_name}__get(%ref)",
+                        field_type = tlt_field_type(&field_ref.descriptor),
                         mangled_name = mangle_field_name(field_class_name, field_name)
                     )?;
                     writeln!(
                         self.file,
-                        "declare void @{mangled_name}__set(%ref* byval, {field_type})",
-                        field_type = tlt_field_type(&field_ref.descriptor, TypePos::DefineArg),
+                        "declare void @{mangled_name}__set(%ref, {field_type})",
+                        field_type = tlt_field_type(&field_ref.descriptor),
                         mangled_name = mangle_field_name(field_class_name, field_name)
                     )?;
                 }
@@ -164,19 +177,14 @@ impl ClassCodeGen {
         write!(
             self.file,
             "\ndefine {return_type} @{mangled_name}(",
-            return_type = tlt_return_type(&method.descriptor.ret, TypePos::DefineRet),
+            return_type = tlt_return_type(&method.descriptor.ret),
             mangled_name = mangle_method_name(class_name, method_name, &method.descriptor.params)
         )?;
         for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
             if i > 0 {
                 write!(self.file, ", ")?;
             }
-            write!(
-                self.file,
-                "{} %v{}",
-                tlt_type(&var.0, TypePos::DefineArg),
-                var.1
-            )?;
+            write!(self.file, "{} %v{}", tlt_type(&var.0), var.1)?;
         }
         writeln!(self.file, ") {{")?;
         for block in blocks.blocks() {
@@ -217,36 +225,68 @@ impl ClassCodeGen {
 
     fn gen_statement(&mut self, stmt: &Statement, consts: &ConstantPool) -> Fallible<()> {
         if let Some(ref var) = stmt.assign {
-            write!(self.file, "  %v{} = ", var.1)?;
+            self.gen_expr(Assign::Assign("v", var.1), &stmt.expression, consts)?;
         } else {
-            write!(self.file, "  ")?;
+            self.gen_expr(Assign::NoAssign, &stmt.expression, consts)?;
         }
-        self.gen_expr(&stmt.expression, consts)
+        Ok(())
     }
 
-    fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_expr(&mut self, assign: Assign, expr: &Expr, consts: &ConstantPool) -> Fallible<()> {
         match expr {
-            Expr::ConstInt(i) => writeln!(self.file, "and i32 {}, {}", i, i)?,
-            Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts)?,
-            Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts)?,
+            Expr::ConstInt(i) => writeln!(self.file, "  {}and i32 {}, {}", assign, i, i)?,
+            Expr::ConstString(index) => self.gen_load_string(assign, *index, consts)?,
+            Expr::GetStatic(index) => self.gen_expr_get_static(assign, *index, consts)?,
+            Expr::Invoke(subexpr) => self.gen_expr_invoke(assign, subexpr, consts)?,
             _ => writeln!(
                 self.file,
-                "select i1 true, i8* undef, i8* undef; {:?}",
-                expr
+                "  {}select i1 true, i8* undef, i8* undef; {:?}",
+                assign, expr
             )?,
         }
         Ok(())
     }
 
-    fn gen_expr_invoke(&mut self, expr: &InvokeExpr, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_load_string(
+        &mut self,
+        assign: Assign,
+        index: ConstantIndex,
+        consts: &ConstantPool,
+    ) -> Fallible<()> {
+        let len = consts.get_utf8(index).unwrap().len();
+        writeln!(
+            self.file,
+            "  %strptr{} = getelementptr [{} x i8], [{} x i8]* @.str{}, i64 0, i64 0",
+            index.as_u16(),
+            len + 1,
+            len + 1,
+            index.as_u16()
+        )?;
+        writeln!(
+            self.file,
+            "  {}call %ref @_Jrt_ldstr(i32 {}, i8* %strptr{})",
+            assign,
+            len,
+            index.as_u16()
+        )?;
+        Ok(())
+    }
+
+    fn gen_expr_invoke(
+        &mut self,
+        assign: Assign,
+        expr: &InvokeExpr,
+        consts: &ConstantPool,
+    ) -> Fallible<()> {
         let method_ref = consts.get_method_ref(expr.index).unwrap();
         let method_name = consts.get_utf8(method_ref.name_index).unwrap();
         let method_class = consts.get_class(method_ref.class_index).unwrap();
         let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
         write!(
             self.file,
-            "call {return_type} @{mangled_name}(",
-            return_type = tlt_return_type(&method_ref.descriptor.ret, TypePos::CallRet),
+            "  {}call {return_type} @{mangled_name}(",
+            assign,
+            return_type = tlt_return_type(&method_ref.descriptor.ret),
             mangled_name = mangle_method_name(
                 method_class_name,
                 method_name,
@@ -254,31 +294,32 @@ impl ClassCodeGen {
             )
         )?;
         match expr.target {
-            InvokeTarget::Static => write!(self.file, "%ref* @nullref")?,
-            InvokeTarget::Special(ref var) => write!(self.file, "%ref* %v{}", var.1)?,
-            InvokeTarget::Virtual(ref var) => write!(self.file, "%ref* %v{}", var.1)?,
+            InvokeTarget::Static => write!(self.file, "%ref {{ i8* null, i8* null }}")?,
+            InvokeTarget::Special(ref var) => write!(self.file, "%ref %v{}", var.1)?,
+            InvokeTarget::Virtual(ref var) => write!(self.file, "%ref %v{}", var.1)?,
         };
         for var in expr.args.iter() {
-            write!(
-                self.file,
-                ", {} %v{}",
-                tlt_type(&var.0, TypePos::CallArg),
-                var.1
-            )?;
+            write!(self.file, ", {} %v{}", tlt_type(&var.0), var.1)?;
         }
         writeln!(self.file, ")")?;
         Ok(())
     }
 
-    fn gen_expr_get_static(&mut self, index: ConstantIndex, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_expr_get_static(
+        &mut self,
+        assign: Assign,
+        index: ConstantIndex,
+        consts: &ConstantPool,
+    ) -> Fallible<()> {
         let field_ref = consts.get_field_ref(index).unwrap();
         let field_name = consts.get_utf8(field_ref.name_index).unwrap();
         let field_class = consts.get_class(field_ref.class_index).unwrap();
         let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
         writeln!(
             self.file,
-            "call {field_type} @{mangled_name}__get(%ref* @nullref)",
-            field_type = tlt_field_type(&field_ref.descriptor, TypePos::CallRet),
+            "  {}call {field_type} @{mangled_name}__get(%ref {{ i8* null, i8* null }})",
+            assign,
+            field_type = tlt_field_type(&field_ref.descriptor),
             mangled_name = mangle_field_name(field_class_name, field_name)
         )?;
         Ok(())
@@ -301,12 +342,7 @@ impl ClassCodeGen {
             }
         }
         for (var, bindings) in phis {
-            write!(
-                self.file,
-                "  %v{} = phi {} ",
-                var.1,
-                tlt_type(&var.0, TypePos::CallRet)
-            )?;
+            write!(self.file, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
             for (i, (out_var, addr)) in bindings.iter().enumerate() {
                 if i > 0 {
                     write!(self.file, ", ")?;
@@ -353,21 +389,28 @@ fn mangle(input: &str) -> String {
     return output;
 }
 
-enum TypePos {
-    DefineRet,
-    DefineArg,
-    CallRet,
-    CallArg,
+enum Assign {
+    NoAssign,
+    Assign(&'static str, u64),
 }
 
-fn tlt_return_type(return_type: &ReturnTypeDescriptor, pos: TypePos) -> &'static str {
-    match return_type {
-        ReturnTypeDescriptor::Void => "void",
-        ReturnTypeDescriptor::Field(field_type) => tlt_field_type(field_type, pos),
+impl fmt::Display for Assign {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Assign::NoAssign => Ok(()),
+            Assign::Assign(v, n) => write!(f, "%{}{} = ", v, n),
+        }
     }
 }
 
-fn tlt_field_type(field_type: &FieldType, pos: TypePos) -> &'static str {
+fn tlt_return_type(return_type: &ReturnTypeDescriptor) -> &'static str {
+    match return_type {
+        ReturnTypeDescriptor::Void => "void",
+        ReturnTypeDescriptor::Field(field_type) => tlt_field_type(field_type),
+    }
+}
+
+fn tlt_field_type(field_type: &FieldType) -> &'static str {
     match field_type {
         FieldType::Base(base_type) => match base_type {
             BaseType::Boolean => "i32",
@@ -379,27 +422,17 @@ fn tlt_field_type(field_type: &FieldType, pos: TypePos) -> &'static str {
             BaseType::Float => "float",
             BaseType::Double => "double",
         },
-        FieldType::Object(_) | FieldType::Array(_) => match pos {
-            TypePos::DefineRet => "%ref",
-            TypePos::DefineArg => "%ref* byval",
-            TypePos::CallRet => "%ref",
-            TypePos::CallArg => "%ref*",
-        },
+        FieldType::Object(_) | FieldType::Array(_) => "%ref",
     }
 }
 
-fn tlt_type(t: &Type, pos: TypePos) -> &'static str {
+fn tlt_type(t: &Type) -> &'static str {
     match t {
         Type::Integer => "i32",
         Type::Long => "i64",
         Type::Float => "float",
         Type::Double => "double",
-        Type::Null | Type::Object(_) | Type::UninitializedThis => match pos {
-            TypePos::DefineRet => "%ref",
-            TypePos::DefineArg => "%ref* byval",
-            TypePos::CallRet => "%ref",
-            TypePos::CallArg => "%ref*",
-        },
+        Type::Null | Type::Object(_) | Type::UninitializedThis => "%ref",
         _ => unimplemented!(),
     }
 }

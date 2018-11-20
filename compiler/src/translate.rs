@@ -66,7 +66,7 @@ pub(crate) enum Expr {
     Var(VarId),
     Const(ConstantIndex),
     ConstInt(i32),
-    ConstString(String),
+    ConstString(ConstantIndex),
     GetStatic(ConstantIndex),
     Invoke(InvokeExpr),
 }
@@ -185,12 +185,11 @@ fn translate_next(
             }
             Instr::LdC(idx) => match consts.get_info(ConstantIndex::from_u8(*idx)).unwrap() {
                 Constant::String(ref string_const) => {
-                    let string_value = consts.get_utf8(string_const.string_index).unwrap();
                     let var = var_id_gen.gen(Type::string());
                     state.push(var.clone());
                     let statement = Statement {
                         assign: Some(var),
-                        expression: Expr::ConstString(string_value.to_owned()),
+                        expression: Expr::ConstString(string_const.string_index),
                     };
                     return Ok(Some(TranslateNext::Statement(statement)));
                 }
