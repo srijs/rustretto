@@ -12,11 +12,11 @@ extern crate string;
 use std::io::Read;
 
 use byteorder::{BigEndian, NativeEndian, ReadBytesExt};
-use bytes::{Bytes};
+use bytes::Bytes;
 use failure::Fallible;
 
-mod buffer;
 mod access_flags;
+mod buffer;
 pub use self::access_flags::{ClassAccessFlags, FieldAccessFlags, MethodAccessFlags};
 pub mod constant_pool;
 pub use self::constant_pool::{ConstantIndex, ConstantPool};

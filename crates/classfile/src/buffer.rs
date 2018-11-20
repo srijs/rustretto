@@ -1,11 +1,11 @@
-use std::ops::Deref;
 use std::borrow::Cow;
 use std::io::Read;
+use std::ops::Deref;
 
-use bytes::{Bytes, Buf};
-use string;
-use failure::Fallible;
+use bytes::{Buf, Bytes};
 use cesu8;
+use failure::Fallible;
+use string;
 
 #[derive(Clone, Debug)]
 pub(crate) struct StrBuf(string::String<Bytes>);
@@ -16,17 +16,13 @@ impl StrBuf {
             Cow::Owned(s) => {
                 // SAFETY: We convert a `String` into `Bytes`, which means that
                 //         the byte buffer only contains valid UTF-8.
-                unsafe {
-                    string::String::from_utf8_unchecked(s.into())
-                }
-            },
+                unsafe { string::String::from_utf8_unchecked(s.into()) }
+            }
             Cow::Borrowed(_) => {
                 // SAFETY: The `cesu8::from_java_cesu8` function has successfully
                 //         returned a borrowed string, therefore we conclude that
                 //         the input buffer is valid UTF-8.
-                unsafe {
-                    string::String::from_utf8_unchecked(bytes.0.clone())
-                }
+                unsafe { string::String::from_utf8_unchecked(bytes.0.clone()) }
             }
         };
         Ok(StrBuf(s))
