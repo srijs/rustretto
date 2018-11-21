@@ -8,12 +8,11 @@ extern crate log;
 extern crate env_logger;
 #[macro_use]
 extern crate structopt;
+extern crate tempdir;
 
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 
-use classfile::ClassFile;
 use failure::Fallible;
 use structopt::StructOpt;
 
@@ -21,6 +20,7 @@ mod blocks;
 mod classes;
 mod compile;
 mod disasm;
+mod driver;
 mod frame;
 mod generate;
 mod loader;
@@ -28,10 +28,7 @@ mod translate;
 mod types;
 mod utils;
 
-use classes::ClassGraph;
-use compile::Compiler;
-use generate::CodeGen;
-use loader::BootstrapClassLoader;
+use driver::Driver;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -48,24 +45,12 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let file = fs::File::open(c.input)?;
-    let class_file = ClassFile::parse(file)?;
+    let driver = Driver::new(home)?;
 
-    let class_name = {
-        let class = class_file.get_this_class();
-        class_file
-            .constant_pool
-            .get_utf8(class.name_index)
-            .unwrap()
-            .to_owned()
-    };
+    driver.compile(&c.input)?;
+    driver.link()?;
 
-    let loader = BootstrapClassLoader::open(home)?;
-    let classes = ClassGraph::build(class_file, &loader)?;
-    let codegen = CodeGen::new("target-jvm".into());
-    let mut compiler = Compiler::new(classes, codegen);
-
-    compiler.compile(&class_name)
+    Ok(())
 }
 
 fn main() {
