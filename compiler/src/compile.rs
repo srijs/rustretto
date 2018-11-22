@@ -21,7 +21,7 @@ impl Compiler {
     }
 
     pub fn compile(&mut self, class_name: &str) -> Fallible<()> {
-        let cf = match self.classes.get(&class_name).unwrap() {
+        let cf = match self.classes.get(&class_name)? {
             Class::File(class_file) => class_file,
             class => bail!("unexpected class type {:?}", class),
         };

@@ -23,7 +23,7 @@ pub(crate) trait ClassLoader {
     fn load(&self, name: &str) -> Fallible<Class>;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct BootstrapClassLoader {
     readers: Arc<Mutex<Vec<JarReader<File>>>>,
 }
