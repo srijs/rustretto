@@ -10,7 +10,6 @@ use blocks::BlockGraph;
 use disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
 use frame::StackAndLocals;
 use types::Type;
-use utils::MinHeap;
 
 #[derive(Debug)]
 struct BlockId(usize);
@@ -306,21 +305,21 @@ pub(crate) fn translate_method(
 ) -> Fallible<BlockGraph> {
     let instr_block_map = InstructionBlockMap::build(dasm)?;
     let mut blocks = BlockGraph::new();
-    let mut remaining = MinHeap::singleton(0u32, incoming);
+    let mut remaining = vec![(0, incoming)];
     while let Some((addr, state)) = remaining.pop() {
         if !blocks.contains(addr) {
             let instr_block = instr_block_map.block_starting_at(addr);
             let block = translate_block(instr_block, state, &consts, var_id_gen)?;
             match block.branch_stub {
                 BranchStub::Goto(addr) => {
-                    remaining.push(addr, block.outgoing.new_with_same_shape(var_id_gen));
+                    remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
                 BranchStub::IfEq(_, if_addr, else_addr) => {
-                    remaining.push(if_addr, block.outgoing.new_with_same_shape(var_id_gen));
-                    remaining.push(else_addr, block.outgoing.new_with_same_shape(var_id_gen));
+                    remaining.push((if_addr, block.outgoing.new_with_same_shape(var_id_gen)));
+                    remaining.push((else_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
                 BranchStub::Invoke(_, _, addr) => {
-                    remaining.push(addr, block.outgoing.new_with_same_shape(var_id_gen));
+                    remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
                 BranchStub::Return(_) => {}
             }

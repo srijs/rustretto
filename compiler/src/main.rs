@@ -26,7 +26,6 @@ mod generate;
 mod loader;
 mod translate;
 mod types;
-mod utils;
 
 use driver::Driver;
 
