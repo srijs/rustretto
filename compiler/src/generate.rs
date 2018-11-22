@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use classfile::attrs::SourceFile;
 use classfile::descriptors::{
     ArrayType, BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
 };
@@ -18,11 +19,15 @@ use types::Type;
 
 pub(crate) struct CodeGen {
     target_path: PathBuf,
+    target_triple: String,
 }
 
 impl CodeGen {
-    pub fn new(target_path: PathBuf) -> Self {
-        CodeGen { target_path }
+    pub fn new(target_path: PathBuf, target_triple: String) -> Self {
+        CodeGen {
+            target_path,
+            target_triple,
+        }
     }
 
     pub fn generate_class(&self, class: &Arc<ClassFile>) -> Fallible<ClassCodeGen> {
@@ -34,6 +39,7 @@ impl CodeGen {
         Ok(ClassCodeGen {
             file,
             class: class.clone(),
+            target_triple: self.target_triple.clone(),
         })
     }
 }
@@ -41,6 +47,7 @@ impl CodeGen {
 pub(crate) struct ClassCodeGen {
     file: File,
     class: Arc<ClassFile>,
+    target_triple: String,
 }
 
 impl ClassCodeGen {
@@ -70,6 +77,15 @@ impl ClassCodeGen {
     }
 
     pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
+        let filename = self.class.attributes.get::<SourceFile>()?;
+        let target_datalayout = target_datalayout(&self.target_triple)?;
+
+        writeln!(self.file, "; ModuleID = '{}'", self.class.get_name())?;
+        writeln!(self.file, "source_filename = \"{}\"", filename.as_str())?;
+        writeln!(self.file, "target datalayout = \"{}\"", target_datalayout)?;
+        writeln!(self.file, "target triple = \"{}\"", self.target_triple)?;
+        writeln!(self.file, "")?;
+
         writeln!(self.file, "%ref = type {{ i8*, i8* }}")?;
 
         writeln!(self.file, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
@@ -246,11 +262,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    fn gen_load_string(
-        &mut self,
-        index: ConstantIndex,
-        consts: &ConstantPool,
-    ) -> Fallible<()> {
+    fn gen_load_string(&mut self, index: ConstantIndex, consts: &ConstantPool) -> Fallible<()> {
         let len = consts.get_utf8(index).unwrap().len();
         writeln!(
             self.file,
@@ -263,11 +275,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    fn gen_expr_invoke(
-        &mut self,
-        expr: &InvokeExpr,
-        consts: &ConstantPool,
-    ) -> Fallible<()> {
+    fn gen_expr_invoke(&mut self, expr: &InvokeExpr, consts: &ConstantPool) -> Fallible<()> {
         let method_ref = consts.get_method_ref(expr.index).unwrap();
         let method_name = consts.get_utf8(method_ref.name_index).unwrap();
         let method_class = consts.get_class(method_ref.class_index).unwrap();
@@ -294,11 +302,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    fn gen_expr_get_static(
-        &mut self,
-        index: ConstantIndex,
-        consts: &ConstantPool,
-    ) -> Fallible<()> {
+    fn gen_expr_get_static(&mut self, index: ConstantIndex, consts: &ConstantPool) -> Fallible<()> {
         let field_ref = consts.get_field_ref(index).unwrap();
         let field_name = consts.get_utf8(field_ref.name_index).unwrap();
         let field_class = consts.get_class(field_ref.class_index).unwrap();
@@ -339,6 +343,13 @@ impl ClassCodeGen {
             writeln!(self.file, "")?;
         }
         Ok(())
+    }
+}
+
+fn target_datalayout(target_triple: &str) -> Fallible<&'static str> {
+    match target_triple {
+        "x86_64-apple-darwin" => Ok("e-m:o-i64:64-f80:128-n8:16:32:64-S128"),
+        _ => bail!("could not determine data layout: unknown target triple"),
     }
 }
 

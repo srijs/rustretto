@@ -14,13 +14,18 @@ use loader::BootstrapClassLoader;
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,
     tmpdir: TempDir,
+    target: String,
 }
 
 impl Driver {
-    pub fn new(home: PathBuf) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target: String) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
         let tmpdir = TempDir::new("target")?;
-        Ok(Driver { loader, tmpdir })
+        Ok(Driver {
+            loader,
+            tmpdir,
+            target,
+        })
     }
 
     pub fn compile(&self, input: &PathBuf) -> Fallible<()> {
@@ -38,7 +43,7 @@ impl Driver {
 
         let classes = ClassGraph::build(class_file, &self.loader)?;
 
-        let codegen = CodeGen::new(self.tmpdir.path().into());
+        let codegen = CodeGen::new(self.tmpdir.path().into(), self.target.clone());
         let mut compiler = Compiler::new(classes, codegen);
 
         compiler.compile(&class_name)
@@ -56,6 +61,8 @@ impl Driver {
         }
 
         let mut cmd = Command::new("clang");
+        cmd.arg(&format!("--target={}", self.target));
+        cmd.arg("-Wno-override-module");
         cmd.args(&["-O3", "-flto", "target/release/libruntime.a"]);
         for path in files {
             cmd.arg(path);

@@ -44,7 +44,7 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let driver = Driver::new(home)?;
+    let driver = Driver::new(home, "x86_64-apple-darwin".to_owned())?;
 
     driver.compile(&c.input)?;
     driver.link()?;
