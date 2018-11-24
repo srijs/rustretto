@@ -7,53 +7,22 @@ use std::io::Write;
 use assert_cli::Assert;
 use tempfile::TempDir;
 
-fn test_case(source: &str, expected: &'static str) {
-    let cwd = std::env::current_dir().unwrap();
-
-    let tmpdir = TempDir::new().unwrap();
-    let tmppath = tmpdir.path();
-
-    let runtime_path = cwd.join("../target/release/libruntime.a");
-    let output_path = tmppath.join("Test");
-
-    let mut srcfile = File::create(tmppath.join("Test.java")).unwrap();
-    srcfile.write_all(source.as_bytes()).unwrap();
-    srcfile.sync_all().unwrap();
-
-    Assert::command(&["javac", "Test.java"])
-        .current_dir(&tmppath)
-        .unwrap();
-
-    Assert::cargo_binary("compiler")
-        .with_args(&["-r"])
-        .with_args(&[&runtime_path])
-        .with_args(&["-o"])
-        .with_args(&[&output_path])
-        .with_args(&[tmppath.join("Test.class")])
-        .unwrap();
-
-    Assert::command(&[output_path])
-        .stdout()
-        .is(expected)
-        .unwrap();
-}
-
 #[test]
-fn hello_world() {
-    test_case(
+fn println() {
+    TestCase(
         r#"
         public class Test {
             public static void main(String[] args) {
                 System.out.println("Hello, World!");
             }
         }"#,
-        "Hello, World!\n",
-    );
+    )
+    .expect_output("Hello, World!\n");
 }
 
 #[test]
 fn if_else() {
-    test_case(
+    TestCase(
         r#"
         public class Test {
             static void print(boolean condition) {
@@ -69,6 +38,41 @@ fn if_else() {
               	print(false);
             }
         }"#,
-        "It's true!\nFalse :(\n",
-    );
+    )
+    .expect_output("It's true!\nFalse :(\n");
+}
+
+struct TestCase(&'static str);
+
+impl TestCase {
+    fn expect_output(&self, expected: &'static str) {
+        let cwd = std::env::current_dir().unwrap();
+
+        let tmpdir = TempDir::new().unwrap();
+        let tmppath = tmpdir.path();
+
+        let runtime_path = cwd.join("../target/release/libruntime.a");
+        let output_path = tmppath.join("Test");
+
+        let mut srcfile = File::create(tmppath.join("Test.java")).unwrap();
+        srcfile.write_all(self.0.as_bytes()).unwrap();
+        srcfile.sync_all().unwrap();
+
+        Assert::command(&["javac", "Test.java"])
+            .current_dir(&tmppath)
+            .unwrap();
+
+        Assert::cargo_binary("compiler")
+            .with_args(&["-r"])
+            .with_args(&[&runtime_path])
+            .with_args(&["-o"])
+            .with_args(&[&output_path])
+            .with_args(&[tmppath.join("Test.class")])
+            .unwrap();
+
+        Assert::command(&[output_path])
+            .stdout()
+            .is(expected)
+            .unwrap();
+    }
 }
