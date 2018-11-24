@@ -108,56 +108,119 @@ enum TranslateNext {
     Branch(BranchStub, Option<ExceptionHandlers>),
 }
 
-fn translate_invoke(
-    invoke: InvokeType,
-    index: ConstantIndex,
-    state: &mut StackAndLocals,
-    consts: &ConstantPool,
-    var_id_gen: &mut VarIdGen,
-) -> Fallible<(Option<VarId>, InvokeExpr)> {
-    let method = consts.get_method_ref(index).unwrap();
-    let method_args_len = method.descriptor.params.len();
-    let args = state.pop_n(method_args_len);
-    let expr = match invoke {
-        InvokeType::Static => InvokeExpr {
-            target: InvokeTarget::Static,
-            index,
-            args,
-        },
-        InvokeType::Special => InvokeExpr {
-            target: InvokeTarget::Special(state.pop()),
-            index,
-            args,
-        },
-        InvokeType::Virtual => InvokeExpr {
-            target: InvokeTarget::Virtual(state.pop()),
-            index,
-            args,
-        },
-    };
-    let return_type = match method.descriptor.ret {
-        ReturnTypeDescriptor::Void => None,
-        ReturnTypeDescriptor::Field(field_type) => Some(Type::from_field_type(field_type)),
-    };
-    let return_var = return_type.map(|t| var_id_gen.gen(t));
-    if let Some(ref var) = return_var {
-        state.push(var.clone());
-    }
-    Ok((return_var, expr))
+struct TranslateInstr<'a> {
+    range: &'a std::ops::Range<u32>,
+    state: &'a mut StackAndLocals,
+    consts: &'a ConstantPool,
+    var_id_gen: &'a mut VarIdGen,
 }
 
-fn translate_iconst(
-    int: i32,
-    state: &mut StackAndLocals,
-    var_id_gen: &mut VarIdGen,
-) -> Fallible<Option<TranslateNext>> {
-    let var = var_id_gen.gen(Type::int());
-    state.push(var.clone());
-    let statement = Statement {
-        assign: Some(var),
-        expression: Expr::ConstInt(int),
-    };
-    Ok(Some(TranslateNext::Statement(statement)))
+impl<'a> TranslateInstr<'a> {
+    fn load(&mut self, idx: usize) {
+        self.state.load(idx)
+    }
+
+    fn store(&mut self, idx: usize) {
+        self.state.store(idx)
+    }
+
+    fn get_static(self, idx: u16) -> Fallible<Option<TranslateNext>> {
+        let field = self
+            .consts
+            .get_field_ref(ConstantIndex::from_u16(idx))
+            .unwrap();
+        let var = self.var_id_gen.gen(Type::from_field_type(field.descriptor));
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::GetStatic(ConstantIndex::from_u16(idx)),
+        };
+        return Ok(Some(TranslateNext::Statement(statement)));
+    }
+
+    fn load_const(self, idx: u8) -> Fallible<Option<TranslateNext>> {
+        match self.consts.get_info(ConstantIndex::from_u8(idx)).unwrap() {
+            Constant::String(ref string_const) => {
+                let var = self.var_id_gen.gen(Type::string());
+                self.state.push(var.clone());
+                let statement = Statement {
+                    assign: Some(var),
+                    expression: Expr::ConstString(string_const.string_index),
+                };
+                return Ok(Some(TranslateNext::Statement(statement)));
+            }
+            constant => bail!("unsupported load of constant {:?}", constant),
+        }
+    }
+
+    fn iconst(self, int: i32) -> Fallible<Option<TranslateNext>> {
+        let var = self.var_id_gen.gen(Type::int());
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::ConstInt(int),
+        };
+        Ok(Some(TranslateNext::Statement(statement)))
+    }
+
+    fn invoke(self, invoke: InvokeType, idx: u16) -> Fallible<Option<TranslateNext>> {
+        let cidx = ConstantIndex::from_u16(idx);
+        let method = self.consts.get_method_ref(cidx).unwrap();
+        let method_args_len = method.descriptor.params.len();
+        let args = self.state.pop_n(method_args_len);
+        let expr = match invoke {
+            InvokeType::Static => InvokeExpr {
+                target: InvokeTarget::Static,
+                index: cidx,
+                args,
+            },
+            InvokeType::Special => InvokeExpr {
+                target: InvokeTarget::Special(self.state.pop()),
+                index: cidx,
+                args,
+            },
+            InvokeType::Virtual => InvokeExpr {
+                target: InvokeTarget::Virtual(self.state.pop()),
+                index: cidx,
+                args,
+            },
+        };
+        let return_type = match method.descriptor.ret {
+            ReturnTypeDescriptor::Void => None,
+            ReturnTypeDescriptor::Field(field_type) => Some(Type::from_field_type(field_type)),
+        };
+        let return_var = return_type.map(|t| self.var_id_gen.gen(t));
+        if let Some(ref var) = return_var {
+            self.state.push(var.clone());
+        }
+        let statement = Statement {
+            assign: return_var,
+            expression: Expr::Invoke(expr),
+        };
+        return Ok(Some(TranslateNext::Statement(statement)));
+    }
+
+    fn goto(self, offset: i16) -> Fallible<Option<TranslateNext>> {
+        let addr = (self.range.start as i64 + offset as i64) as u32;
+        return Ok(Some(TranslateNext::Branch(BranchStub::Goto(addr), None)));
+    }
+
+    fn ret(self) -> Fallible<Option<TranslateNext>> {
+        return Ok(Some(TranslateNext::Branch(
+            BranchStub::Return(None),
+            Some(ExceptionHandlers),
+        )));
+    }
+
+    fn if_eq(self, offset: i16) -> Fallible<Option<TranslateNext>> {
+        let var = self.state.pop();
+        let if_addr = (self.range.start as i64 + offset as i64) as u32;
+        let else_addr = self.range.end;
+        return Ok(Some(TranslateNext::Branch(
+            BranchStub::IfEq(var, if_addr, else_addr),
+            None,
+        )));
+    }
 }
 
 fn translate_next(
@@ -167,104 +230,27 @@ fn translate_next(
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<Option<TranslateNext>> {
     for InstructionWithRange { range, instr } in instrs {
+        let mut t = TranslateInstr {
+            range,
+            state,
+            consts,
+            var_id_gen,
+        };
         match instr {
-            Instr::ALoad0 => {
-                state.load(0);
-            }
-            Instr::ALoad1 => {
-                state.load(1);
-            }
-            Instr::AStore1 => {
-                state.store(1);
-            }
-            Instr::ILoad(idx) => {
-                state.load(*idx as usize);
-            }
-            Instr::IConst0 => return translate_iconst(0, state, var_id_gen),
-            Instr::IConst1 => return translate_iconst(1, state, var_id_gen),
-            Instr::GetStatic(idx) => {
-                let field = consts.get_field_ref(ConstantIndex::from_u16(*idx)).unwrap();
-                let var = var_id_gen.gen(Type::from_field_type(field.descriptor));
-                state.push(var.clone());
-                let statement = Statement {
-                    assign: Some(var),
-                    expression: Expr::GetStatic(ConstantIndex::from_u16(*idx)),
-                };
-                return Ok(Some(TranslateNext::Statement(statement)));
-            }
-            Instr::LdC(idx) => match consts.get_info(ConstantIndex::from_u8(*idx)).unwrap() {
-                Constant::String(ref string_const) => {
-                    let var = var_id_gen.gen(Type::string());
-                    state.push(var.clone());
-                    let statement = Statement {
-                        assign: Some(var),
-                        expression: Expr::ConstString(string_const.string_index),
-                    };
-                    return Ok(Some(TranslateNext::Statement(statement)));
-                }
-                constant => bail!("unsupported load of constant {:?}", constant),
-            },
-            Instr::InvokeSpecial(idx) => {
-                let (bind, expr) = translate_invoke(
-                    InvokeType::Special,
-                    ConstantIndex::from_u16(*idx),
-                    state,
-                    consts,
-                    var_id_gen,
-                )?;
-                let statement = Statement {
-                    assign: bind,
-                    expression: Expr::Invoke(expr),
-                };
-                return Ok(Some(TranslateNext::Statement(statement)));
-            }
-            Instr::InvokeStatic(idx) => {
-                let (bind, expr) = translate_invoke(
-                    InvokeType::Static,
-                    ConstantIndex::from_u16(*idx),
-                    state,
-                    consts,
-                    var_id_gen,
-                )?;
-                let statement = Statement {
-                    assign: bind,
-                    expression: Expr::Invoke(expr),
-                };
-                return Ok(Some(TranslateNext::Statement(statement)));
-            }
-            Instr::InvokeVirtual(idx) => {
-                let (bind, expr) = translate_invoke(
-                    InvokeType::Virtual,
-                    ConstantIndex::from_u16(*idx),
-                    state,
-                    consts,
-                    var_id_gen,
-                )?;
-                let statement = Statement {
-                    assign: bind,
-                    expression: Expr::Invoke(expr),
-                };
-                return Ok(Some(TranslateNext::Statement(statement)));
-            }
-            Instr::Goto(offset) => {
-                let addr = (range.start as i64 + *offset as i64) as u32;
-                return Ok(Some(TranslateNext::Branch(BranchStub::Goto(addr), None)));
-            }
-            Instr::Return => {
-                return Ok(Some(TranslateNext::Branch(
-                    BranchStub::Return(None),
-                    Some(ExceptionHandlers),
-                )));
-            }
-            Instr::IfEq(offset) => {
-                let var = state.pop();
-                let if_addr = (range.start as i64 + *offset as i64) as u32;
-                let else_addr = range.end;
-                return Ok(Some(TranslateNext::Branch(
-                    BranchStub::IfEq(var, if_addr, else_addr),
-                    None,
-                )));
-            }
+            Instr::ALoad0 => t.load(0),
+            Instr::ALoad1 => t.load(1),
+            Instr::AStore1 => t.store(1),
+            Instr::ILoad(idx) => t.load(*idx as usize),
+            Instr::IConst0 => return t.iconst(0),
+            Instr::IConst1 => return t.iconst(1),
+            Instr::GetStatic(idx) => return t.get_static(*idx),
+            Instr::LdC(idx) => return t.load_const(*idx),
+            Instr::InvokeSpecial(idx) => return t.invoke(InvokeType::Special, *idx),
+            Instr::InvokeStatic(idx) => return t.invoke(InvokeType::Static, *idx),
+            Instr::InvokeVirtual(idx) => return t.invoke(InvokeType::Virtual, *idx),
+            Instr::Goto(offset) => return t.goto(*offset),
+            Instr::Return => return t.ret(),
+            Instr::IfEq(offset) => return t.if_eq(*offset),
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }
