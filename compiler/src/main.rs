@@ -45,6 +45,8 @@ struct Compile {
     runtime: PathBuf,
     #[structopt(parse(from_os_str))]
     input: PathBuf,
+    #[structopt(short = "O", default_value = "0")]
+    optimize: u32
 }
 
 fn compile(c: Compile) -> Fallible<()> {
@@ -52,7 +54,7 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let driver = Driver::new(home, "x86_64-apple-darwin".to_owned())?;
+    let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize)?;
 
     driver.compile(&c.input)?;
     driver.link(&c.runtime, &c.output)?;

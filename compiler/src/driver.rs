@@ -15,16 +15,18 @@ pub(crate) struct Driver {
     loader: BootstrapClassLoader,
     tmpdir: TempDir,
     target: String,
+    optimize: u32
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target: String) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target: String, optimize: u32) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
         let tmpdir = TempDir::new()?;
         Ok(Driver {
             loader,
             tmpdir,
             target,
+            optimize
         })
     }
 
@@ -68,7 +70,14 @@ impl Driver {
         cmd.arg("-o");
         cmd.arg(output_path);
 
-        cmd.args(&["-O3", "-flto"]);
+        // configure optimizations
+        match self.optimize {
+            0 => cmd.arg("-O0"),
+            1 => cmd.arg("-01"),
+            2 => cmd.arg("-02"),
+            3 => cmd.args(&["-O3", "-flto"]),
+            x => bail!("unknown optimization level {}", x)
+        };
 
         // configure inputs
         cmd.arg(runtime_path);
