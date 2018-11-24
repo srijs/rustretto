@@ -8,7 +8,7 @@ extern crate log;
 extern crate env_logger;
 #[macro_use]
 extern crate structopt;
-extern crate tempdir;
+extern crate tempfile;
 
 use std::env;
 use std::path::PathBuf;
@@ -35,6 +35,10 @@ use driver::Driver;
     about = "Compile JVM classfiles into a native executable."
 )]
 struct Compile {
+    #[structopt(parse(from_os_str), short = "o")]
+    output: PathBuf,
+    #[structopt(parse(from_os_str), short = "r")]
+    runtime: PathBuf,
     #[structopt(parse(from_os_str))]
     input: PathBuf,
 }
@@ -47,7 +51,7 @@ fn compile(c: Compile) -> Fallible<()> {
     let driver = Driver::new(home, "x86_64-apple-darwin".to_owned())?;
 
     driver.compile(&c.input)?;
-    driver.link()?;
+    driver.link(&c.runtime, &c.output)?;
 
     Ok(())
 }
@@ -56,5 +60,6 @@ fn main() {
     env_logger::init();
     if let Err(err) = compile(Compile::from_args()) {
         println!("Error: {:?}", err);
+        std::process::exit(1);
     }
 }

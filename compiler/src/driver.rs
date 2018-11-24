@@ -1,10 +1,10 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use classfile::ClassFile;
 use failure::Fallible;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 use classes::ClassGraph;
 use compile::Compiler;
@@ -20,7 +20,7 @@ pub(crate) struct Driver {
 impl Driver {
     pub fn new(home: PathBuf, target: String) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
-        let tmpdir = TempDir::new("target")?;
+        let tmpdir = TempDir::new()?;
         Ok(Driver {
             loader,
             tmpdir,
@@ -49,7 +49,7 @@ impl Driver {
         compiler.compile(&class_name)
     }
 
-    pub fn link(&self) -> Fallible<()> {
+    pub fn link(&self, runtime_path: &Path, output_path: &Path) -> Fallible<()> {
         let mut files = vec![];
         for entry_result in self.tmpdir.path().read_dir()? {
             let entry = entry_result?;
@@ -63,11 +63,21 @@ impl Driver {
         let mut cmd = Command::new("clang");
         cmd.arg(&format!("--target={}", self.target));
         cmd.arg("-Wno-override-module");
-        cmd.args(&["-O3", "-flto", "target/release/libruntime.a"]);
+
+        // configure output
+        cmd.arg("-o");
+        cmd.arg(output_path);
+
+        cmd.args(&["-O3", "-flto"]);
+
+        // configure inputs
+        cmd.arg(runtime_path);
         for path in files {
             cmd.arg(path);
         }
+
         let exit = cmd.status()?;
+
         if !exit.success() {
             if let Some(code) = exit.code() {
                 bail!("linker exited with status code {}", code);
