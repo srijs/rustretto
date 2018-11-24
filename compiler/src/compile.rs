@@ -36,7 +36,7 @@ impl Compiler {
             if name == "<init>" {
                 let arg_type = Type::UninitializedThis;
                 args.push(var_id_gen.gen(arg_type));
-            } else {
+            } else if !method.is_static() {
                 let arg_type = Type::Object(class_name.to_owned());
                 args.push(var_id_gen.gen(arg_type));
             }

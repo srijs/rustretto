@@ -50,3 +50,25 @@ fn hello_world() {
         "Hello, World!\n",
     );
 }
+
+#[test]
+fn if_else() {
+    test_case(
+        r#"
+        public class Test {
+            static void print(boolean condition) {
+                if (condition) {
+                    System.out.println("It's true!");
+                } else {
+                    System.out.println("False :(");
+                }
+            }
+
+            public static void main(String[] args) {
+                print(true);
+              	print(false);
+            }
+        }"#,
+        "It's true!\nFalse :(\n",
+    );
+}

@@ -42,6 +42,11 @@ impl InstructionBlock {
             let next_addr = disasm.position();
             let should_break = match instr {
                 Instr::Return => true,
+                Instr::Goto(offset) => {
+                    let addr = (curr_addr as i64 + offset as i64) as u32;
+                    start_addrs.push(addr);
+                    true
+                }
                 Instr::IfEq(offset) => {
                     let if_addr = (curr_addr as i64 + offset as i64) as u32;
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);

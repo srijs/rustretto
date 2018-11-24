@@ -60,7 +60,7 @@ impl ClassCodeGen {
         writeln!(self.file, "define i32 @main() {{")?;
         writeln!(
             self.file,
-            "  call void @{}(%ref zeroinitializer, %ref zeroinitializer)",
+            "  call void @{}(%ref zeroinitializer)",
             mangle_method_name(
                 class_name,
                 "main",
@@ -77,6 +77,12 @@ impl ClassCodeGen {
     }
 
     pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
+        let class_name = self
+            .class
+            .constant_pool
+            .get_utf8(self.class.get_this_class().name_index)
+            .unwrap();
+
         let filename = self.class.attributes.get::<SourceFile>()?;
         let target_datalayout = target_datalayout(&self.target_triple)?;
 
@@ -125,6 +131,10 @@ impl ClassCodeGen {
                         .constant_pool
                         .get_utf8(method_class.name_index)
                         .unwrap();
+                    // Skip methods of the current class
+                    if method_class_name == class_name {
+                        continue;
+                    }
                     write!(
                         self.file,
                         "declare {return_type} @{mangled_name}(",
@@ -253,11 +263,7 @@ impl ClassCodeGen {
             Expr::ConstString(index) => self.gen_load_string(*index, consts)?,
             Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts)?,
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts)?,
-            _ => writeln!(
-                self.file,
-                "select i1 true, i8* undef, i8* undef; {:?}",
-                expr
-            )?,
+            _ => bail!("unknown expression {:?}", expr)
         }
         Ok(())
     }
@@ -290,14 +296,27 @@ impl ClassCodeGen {
                 &method_ref.descriptor.params
             )
         )?;
+
+        let mut args = vec![];
+
         match expr.target {
-            InvokeTarget::Static => write!(self.file, "%ref zeroinitializer")?,
-            InvokeTarget::Special(ref var) => write!(self.file, "%ref %v{}", var.1)?,
-            InvokeTarget::Virtual(ref var) => write!(self.file, "%ref %v{}", var.1)?,
+            InvokeTarget::Static => {},
+            InvokeTarget::Special(ref var) => args.push(format!("%ref %v{}", var.1)),
+            InvokeTarget::Virtual(ref var) => args.push(format!("%ref %v{}", var.1)),
         };
+
         for var in expr.args.iter() {
-            write!(self.file, ", {} %v{}", tlt_type(&var.0), var.1)?;
+            args.push(format!("{} %v{}", tlt_type(&var.0), var.1));
         }
+
+        for (idx, arg) in args.iter().enumerate() {
+            if idx > 0 {
+                write!(self.file, ", {}", arg)?;
+            } else {
+                write!(self.file, "{}", arg)?;
+            }
+        }
+
         writeln!(self.file, ")")?;
         Ok(())
     }

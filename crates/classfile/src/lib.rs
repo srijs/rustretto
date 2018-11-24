@@ -50,6 +50,12 @@ pub struct Method {
     pub attributes: Attributes,
 }
 
+impl Method {
+    pub fn is_static(&self) -> bool {
+        self.access_flags.contains(MethodAccessFlags::STATIC)
+    }
+}
+
 #[derive(Debug)]
 pub struct MethodRef {
     pub class_index: ConstantIndex,

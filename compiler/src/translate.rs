@@ -146,6 +146,20 @@ fn translate_invoke(
     Ok((return_var, expr))
 }
 
+fn translate_iconst(
+    int: i32,
+    state: &mut StackAndLocals,
+    var_id_gen: &mut VarIdGen,
+) -> Fallible<Option<TranslateNext>> {
+    let var = var_id_gen.gen(Type::int());
+    state.push(var.clone());
+    let statement = Statement {
+        assign: Some(var),
+        expression: Expr::ConstInt(int),
+    };
+    Ok(Some(TranslateNext::Statement(statement)))
+}
+
 fn translate_next(
     instrs: &mut Iterator<Item = &InstructionWithRange>,
     state: &mut StackAndLocals,
@@ -163,15 +177,11 @@ fn translate_next(
             Instr::AStore1 => {
                 state.store(1);
             }
-            Instr::IConst0 => {
-                let var = var_id_gen.gen(Type::int());
-                state.push(var.clone());
-                let statement = Statement {
-                    assign: Some(var),
-                    expression: Expr::ConstInt(0),
-                };
-                return Ok(Some(TranslateNext::Statement(statement)));
+            Instr::ILoad(idx) => {
+                state.load(*idx as usize);
             }
+            Instr::IConst0 => return translate_iconst(0, state, var_id_gen),
+            Instr::IConst1 => return translate_iconst(1, state, var_id_gen),
             Instr::GetStatic(idx) => {
                 let field = consts.get_field_ref(ConstantIndex::from_u16(*idx)).unwrap();
                 let var = var_id_gen.gen(Type::from_field_type(field.descriptor));
@@ -235,6 +245,10 @@ fn translate_next(
                     expression: Expr::Invoke(expr),
                 };
                 return Ok(Some(TranslateNext::Statement(statement)));
+            }
+            Instr::Goto(offset) => {
+                let addr = (range.start as i64 + *offset as i64) as u32;
+                return Ok(Some(TranslateNext::Branch(BranchStub::Goto(addr), None)));
             }
             Instr::Return => {
                 return Ok(Some(TranslateNext::Branch(
