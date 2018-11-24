@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Write, BufWriter};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -37,7 +37,7 @@ impl CodeGen {
             .unwrap();
         let file = File::create(self.target_path.join(format!("{}.ll", mangle(class_name))))?;
         Ok(ClassCodeGen {
-            file,
+            file: BufWriter::new(file),
             class: class.clone(),
             target_triple: self.target_triple.clone(),
         })
@@ -45,7 +45,7 @@ impl CodeGen {
 }
 
 pub(crate) struct ClassCodeGen {
-    file: File,
+    file: BufWriter<File>,
     class: Arc<ClassFile>,
     target_triple: String,
 }
