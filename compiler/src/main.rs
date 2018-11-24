@@ -12,6 +12,7 @@ extern crate tempfile;
 
 use std::env;
 use std::path::PathBuf;
+use std::alloc::System;
 
 use failure::Fallible;
 use structopt::StructOpt;
@@ -28,6 +29,9 @@ mod translate;
 mod types;
 
 use driver::Driver;
+
+#[global_allocator]
+static GLOBAL: System = System;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
