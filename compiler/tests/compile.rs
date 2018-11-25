@@ -16,8 +16,22 @@ fn println() {
                 System.out.println("Hello, World!");
             }
         }"#,
-    )
-    .expect_output("Hello, World!\n");
+    ).expect_output("Hello, World!\n");
+}
+
+#[test]
+fn for_loop() {
+    TestCase(
+        r#"
+        public class Test {
+            public static void main(String[] args) {
+                int i;
+                for (i = 0; i < 3; i++) {
+                    System.out.println("X");
+                }
+            }
+        }"#,
+    ).expect_output("X\nX\nX\n");
 }
 
 #[test]
@@ -38,8 +52,7 @@ fn if_else() {
               	print(false);
             }
         }"#,
-    )
-    .expect_output("It's true!\nFalse :(\n");
+    ).expect_output("It's true!\nFalse :(\n");
 }
 
 struct TestCase(&'static str);

@@ -68,15 +68,22 @@ pub(crate) enum Expr {
     ConstString(ConstantIndex),
     GetStatic(ConstantIndex),
     Invoke(InvokeExpr),
+    IInc(VarId, i32),
 }
 
 #[derive(Debug)]
 pub(crate) struct ExceptionHandlers; // TODO
 
 #[derive(Debug)]
+pub(crate) enum Comparator {
+    Eq,
+    Ge,
+}
+
+#[derive(Debug)]
 pub(crate) enum BranchStub {
     Goto(u32),
-    IfEq(VarId, u32, u32),
+    IfICmp(Comparator, VarId, Option<VarId>, u32, u32),
     Return(Option<VarId>),
     Invoke(Option<VarId>, InvokeExpr, u32),
 }
@@ -163,6 +170,17 @@ impl<'a> TranslateInstr<'a> {
         Ok(Some(TranslateNext::Statement(statement)))
     }
 
+    fn iinc(self, idx: u8, int: i32) -> Fallible<Option<TranslateNext>> {
+        let var2 = self.var_id_gen.gen(Type::int());
+        let var1 = self.state.locals[&(idx as usize)].clone();
+        self.state.locals.insert(idx as usize, var2.clone());
+        let statement = Statement {
+            assign: Some(var2),
+            expression: Expr::IInc(var1, int),
+        };
+        Ok(Some(TranslateNext::Statement(statement)))
+    }
+
     fn invoke(self, invoke: InvokeType, idx: u16) -> Fallible<Option<TranslateNext>> {
         let cidx = ConstantIndex::from_u16(idx);
         let method = self.consts.get_method_ref(cidx).unwrap();
@@ -212,12 +230,23 @@ impl<'a> TranslateInstr<'a> {
         )));
     }
 
-    fn if_eq(self, offset: i16) -> Fallible<Option<TranslateNext>> {
+    fn if_icmp(self, offset: i16, comp: Comparator) -> Fallible<Option<TranslateNext>> {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        let if_addr = (self.range.start as i64 + offset as i64) as u32;
+        let else_addr = self.range.end;
+        return Ok(Some(TranslateNext::Branch(
+            BranchStub::IfICmp(comp, value1, Some(value2), if_addr, else_addr),
+            None,
+        )));
+    }
+
+    fn if_zcmp(self, offset: i16, comp: Comparator) -> Fallible<Option<TranslateNext>> {
         let var = self.state.pop();
         let if_addr = (self.range.start as i64 + offset as i64) as u32;
         let else_addr = self.range.end;
         return Ok(Some(TranslateNext::Branch(
-            BranchStub::IfEq(var, if_addr, else_addr),
+            BranchStub::IfICmp(comp, var, None, if_addr, else_addr),
             None,
         )));
     }
@@ -241,8 +270,12 @@ fn translate_next(
             Instr::ALoad1 => t.load(1),
             Instr::AStore1 => t.store(1),
             Instr::ILoad(idx) => t.load(*idx as usize),
+            Instr::IStore(idx) => t.store(*idx as usize),
             Instr::IConst0 => return t.iconst(0),
             Instr::IConst1 => return t.iconst(1),
+            Instr::IConst2 => return t.iconst(2),
+            Instr::IConst3 => return t.iconst(3),
+            Instr::IInc(idx, int) => return t.iinc(*idx, *int as i32),
             Instr::GetStatic(idx) => return t.get_static(*idx),
             Instr::LdC(idx) => return t.load_const(*idx),
             Instr::InvokeSpecial(idx) => return t.invoke(InvokeType::Special, *idx),
@@ -250,7 +283,8 @@ fn translate_next(
             Instr::InvokeVirtual(idx) => return t.invoke(InvokeType::Virtual, *idx),
             Instr::Goto(offset) => return t.goto(*offset),
             Instr::Return => return t.ret(),
-            Instr::IfEq(offset) => return t.if_eq(*offset),
+            Instr::IfEq(offset) => return t.if_zcmp(*offset, Comparator::Eq),
+            Instr::IfICmpGe(offset) => return t.if_icmp(*offset, Comparator::Ge),
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }
@@ -314,13 +348,14 @@ pub(crate) fn translate_method(
                 BranchStub::Goto(addr) => {
                     remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
-                BranchStub::IfEq(_, if_addr, else_addr) => {
+                BranchStub::IfICmp(_, _, _, if_addr, else_addr) => {
                     remaining.push((if_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                     remaining.push((else_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
                 BranchStub::Invoke(_, _, addr) => {
                     remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
+
                 BranchStub::Return(_) => {}
             }
             blocks.insert(block);

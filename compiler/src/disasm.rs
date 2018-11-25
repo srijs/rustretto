@@ -47,7 +47,7 @@ impl InstructionBlock {
                     start_addrs.push(addr);
                     true
                 }
-                Instr::IfEq(offset) => {
+                Instr::IfEq(offset) | Instr::IfICmpGe(offset) => {
                     let if_addr = (curr_addr as i64 + offset as i64) as u32;
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);
                     true

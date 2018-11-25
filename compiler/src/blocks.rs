@@ -53,7 +53,7 @@ impl BlockGraph {
                 BranchStub::Goto(addr) => {
                     self.inner.update_edge(*index, self.addr_map[&addr], ());
                 }
-                BranchStub::IfEq(_, if_addr, else_addr) => {
+                BranchStub::IfICmp(_, _, _, if_addr, else_addr) => {
                     self.inner.update_edge(*index, self.addr_map[&if_addr], ());
                     self.inner
                         .update_edge(*index, self.addr_map[&else_addr], ());

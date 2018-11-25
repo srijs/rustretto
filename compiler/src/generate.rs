@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{Write, BufWriter};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ use failure::Fallible;
 
 use blocks::BlockGraph;
 use translate::{
-    BasicBlock, BranchStub, Expr, InvokeExpr, InvokeTarget, Statement, VarId, VarIdGen,
+    BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId, VarIdGen,
 };
 use types::Type;
 
@@ -234,9 +234,25 @@ impl ClassCodeGen {
         match &block.branch_stub {
             BranchStub::Goto(addr) => writeln!(self.file, "  br label %B{}", addr)?,
             BranchStub::Return(None) => writeln!(self.file, "  ret void")?,
-            BranchStub::IfEq(var, if_addr, else_addr) => {
+            BranchStub::IfICmp(comp, var1, var2_opt, if_addr, else_addr) => {
                 let tmp = var_id_gen.gen(Type::int());
-                writeln!(self.file, "  %tmp{} = icmp eq i32 0, %v{}", tmp.1, var.1)?;
+                let code = match comp {
+                    Comparator::Eq => "eq",
+                    Comparator::Ge => "sge",
+                };
+                if let Some(var2) = var2_opt {
+                    writeln!(
+                        self.file,
+                        "  %tmp{} = icmp {} i32 %v{}, %v{}",
+                        tmp.1, code, var1.1, var2.1
+                    )?;
+                } else {
+                    writeln!(
+                        self.file,
+                        "  %tmp{} = icmp {} i32 0, %v{}",
+                        tmp.1, code, var1.1
+                    )?;
+                }
                 writeln!(
                     self.file,
                     "  br i1 %tmp{}, label %B{}, label %B{}",
@@ -263,7 +279,8 @@ impl ClassCodeGen {
             Expr::ConstString(index) => self.gen_load_string(*index, consts)?,
             Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts)?,
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts)?,
-            _ => bail!("unknown expression {:?}", expr)
+            Expr::IInc(var, i) => writeln!(self.file, "add i32 %v{}, {}", var.1, i)?,
+            _ => bail!("unknown expression {:?}", expr),
         }
         Ok(())
     }
@@ -300,7 +317,7 @@ impl ClassCodeGen {
         let mut args = vec![];
 
         match expr.target {
-            InvokeTarget::Static => {},
+            InvokeTarget::Static => {}
             InvokeTarget::Special(ref var) => args.push(format!("%ref %v{}", var.1)),
             InvokeTarget::Virtual(ref var) => args.push(format!("%ref %v{}", var.1)),
         };

@@ -15,7 +15,7 @@ pub(crate) struct Driver {
     loader: BootstrapClassLoader,
     temppath: PathBuf,
     target: String,
-    optimize: u32
+    optimize: u32,
 }
 
 impl Driver {
@@ -26,7 +26,7 @@ impl Driver {
             loader,
             temppath: temppath.into(),
             target,
-            optimize
+            optimize,
         })
     }
 
@@ -76,7 +76,7 @@ impl Driver {
             1 => cmd.arg("-01"),
             2 => cmd.arg("-02"),
             3 => cmd.args(&["-O3", "-flto"]),
-            x => bail!("unknown optimization level {}", x)
+            x => bail!("unknown optimization level {}", x),
         };
 
         // configure inputs
