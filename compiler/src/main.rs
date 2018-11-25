@@ -16,6 +16,7 @@ use std::alloc::System;
 
 use failure::Fallible;
 use structopt::StructOpt;
+use tempfile::TempDir;
 
 mod blocks;
 mod classes;
@@ -46,7 +47,9 @@ struct Compile {
     #[structopt(parse(from_os_str))]
     input: PathBuf,
     #[structopt(short = "O", default_value = "0")]
-    optimize: u32
+    optimize: u32,
+    #[structopt(parse(from_os_str), long = "save-temp")]
+    save_temp: Option<PathBuf>
 }
 
 fn compile(c: Compile) -> Fallible<()> {
@@ -54,7 +57,11 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize)?;
+    let tempdir = TempDir::new()?;
+
+    let temppath = c.save_temp.as_ref().map(|p| p.as_ref()).unwrap_or(tempdir.path());
+
+    let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
 
     driver.compile(&c.input)?;
     driver.link(&c.runtime, &c.output)?;

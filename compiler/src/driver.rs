@@ -13,18 +13,18 @@ use loader::BootstrapClassLoader;
 
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,
-    tmpdir: TempDir,
+    temppath: PathBuf,
     target: String,
     optimize: u32
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target: String, optimize: u32) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target: String, optimize: u32, temppath: &Path) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
         let tmpdir = TempDir::new()?;
         Ok(Driver {
             loader,
-            tmpdir,
+            temppath: temppath.into(),
             target,
             optimize
         })
@@ -45,7 +45,7 @@ impl Driver {
 
         let classes = ClassGraph::build(class_file, self.loader.clone())?;
 
-        let codegen = CodeGen::new(self.tmpdir.path().into(), self.target.clone());
+        let codegen = CodeGen::new(self.temppath.clone(), self.target.clone());
         let mut compiler = Compiler::new(classes, codegen);
 
         compiler.compile(&class_name)
@@ -53,7 +53,7 @@ impl Driver {
 
     pub fn link(&self, runtime_path: &Path, output_path: &Path) -> Fallible<()> {
         let mut files = vec![];
-        for entry_result in self.tmpdir.path().read_dir()? {
+        for entry_result in self.temppath.read_dir()? {
             let entry = entry_result?;
             let path = entry.path();
             let is_ll = path.extension().map(|ext| ext == "ll").unwrap_or(false);
