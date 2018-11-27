@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use classfile::attrs::SourceFile;
 use classfile::descriptors::{
-    ArrayType, BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
+    ArrayType, BaseType, FieldType, MethodDescriptor, ObjectType, ParameterDescriptor,
+    ReturnTypeDescriptor,
 };
 use classfile::{constant_pool::Constant, ClassFile, ConstantIndex, ConstantPool, Method};
 use failure::Fallible;
@@ -16,6 +17,7 @@ use translate::{
     BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId, VarIdGen,
 };
 use types::Type;
+use vtable::VTable;
 
 pub(crate) struct CodeGen {
     target_path: PathBuf,
@@ -64,6 +66,7 @@ impl ClassCodeGen {
             mangle_method_name(
                 class_name,
                 "main",
+                &ReturnTypeDescriptor::Void,
                 &[ParameterDescriptor::Field(FieldType::Array(ArrayType {
                     component_type: Box::new(FieldType::Object(ObjectType {
                         class_name: "java.lang.String".to_owned()
@@ -73,6 +76,99 @@ impl ClassCodeGen {
         )?;
         writeln!(self.file, "  ret i32 0")?;
         writeln!(self.file, "}}")?;
+        Ok(())
+    }
+
+    pub(crate) fn gen_vtable_type(&mut self, class_name: &str, vtable: &VTable) -> Fallible<()> {
+        writeln!(self.file, "%vtable.{} = type {{", mangle(class_name))?;
+        for (idx, (key, _)) in vtable.method_dispatch.iter().enumerate() {
+            write!(
+                self.file,
+                "  {} *",
+                tlt_function_type(&key.method_descriptor)
+            )?;
+            if idx < vtable.method_dispatch.len() - 1 {
+                writeln!(self.file, ",")?;
+            } else {
+                writeln!(self.file, "")?;
+            }
+        }
+        writeln!(self.file, "}}")?;
+
+        Ok(())
+    }
+
+    pub(crate) fn gen_vtable_const(&mut self, class_name: &str, vtable: &VTable) -> Fallible<()> {
+        let mangled_class_name = mangle(class_name);
+
+        writeln!(
+            self.file,
+            "@vtable.{} = constant %vtable.{} {{",
+            mangled_class_name, mangled_class_name
+        )?;
+        for (idx, (key, target)) in vtable.method_dispatch.iter().enumerate() {
+            write!(
+                self.file,
+                "  {} * @{}",
+                tlt_function_type(&key.method_descriptor),
+                mangle_method_name(
+                    &target.class_name,
+                    &key.method_name,
+                    &key.method_descriptor.ret,
+                    &key.method_descriptor.params
+                )
+            )?;
+            if idx < vtable.method_dispatch.len() - 1 {
+                writeln!(self.file, ",")?;
+            } else {
+                writeln!(self.file, "")?;
+            }
+        }
+        writeln!(self.file, "}}")?;
+
+        Ok(())
+    }
+
+    pub(crate) fn gen_extern_decls(&mut self, class: &ClassFile) -> Fallible<()> {
+        let class_name = class.get_name();
+
+        for method in class.methods.iter() {
+            let method_name = class.constant_pool.get_utf8(method.name_index).unwrap();
+
+            write!(
+                self.file,
+                "declare {return_type} @{mangled_name}(",
+                return_type = tlt_return_type(&method.descriptor.ret),
+                mangled_name = mangle_method_name(
+                    class_name,
+                    method_name,
+                    &method.descriptor.ret,
+                    &method.descriptor.params
+                )
+            )?;
+            write!(self.file, "%ref")?;
+            for ParameterDescriptor::Field(field) in method.descriptor.params.iter() {
+                write!(self.file, ", {}", tlt_field_type(field))?;
+            }
+            writeln!(self.file, ")")?;
+        }
+
+        for field in class.fields.iter() {
+            let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
+            writeln!(
+                self.file,
+                "declare {field_type} @{mangled_name}__get(%ref)",
+                field_type = tlt_field_type(&field.descriptor),
+                mangled_name = mangle_field_name(class_name, field_name)
+            )?;
+            writeln!(
+                self.file,
+                "declare void @{mangled_name}__set(%ref, {field_type})",
+                field_type = tlt_field_type(&field.descriptor),
+                mangled_name = mangle_field_name(class_name, field_name)
+            )?;
+        }
+
         Ok(())
     }
 
@@ -113,75 +209,6 @@ impl ClassCodeGen {
                     }
                     writeln!(self.file, " i8 0 ]")?;
                 }
-                Constant::MethodRef(_) => {
-                    write!(self.file, "\n")?;
-                    let method_ref = self.class.constant_pool.get_method_ref(index).unwrap();
-                    let method_name = self
-                        .class
-                        .constant_pool
-                        .get_utf8(method_ref.name_index)
-                        .unwrap();
-                    let method_class = self
-                        .class
-                        .constant_pool
-                        .get_class(method_ref.class_index)
-                        .unwrap();
-                    let method_class_name = self
-                        .class
-                        .constant_pool
-                        .get_utf8(method_class.name_index)
-                        .unwrap();
-                    // Skip methods of the current class
-                    if method_class_name == class_name {
-                        continue;
-                    }
-                    write!(
-                        self.file,
-                        "declare {return_type} @{mangled_name}(",
-                        return_type = tlt_return_type(&method_ref.descriptor.ret),
-                        mangled_name = mangle_method_name(
-                            method_class_name,
-                            method_name,
-                            &method_ref.descriptor.params
-                        )
-                    )?;
-                    write!(self.file, "%ref")?;
-                    for ParameterDescriptor::Field(field) in method_ref.descriptor.params.iter() {
-                        write!(self.file, ", {}", tlt_field_type(field))?;
-                    }
-                    writeln!(self.file, ")")?;
-                }
-                Constant::FieldRef(_) => {
-                    write!(self.file, "\n")?;
-                    let field_ref = self.class.constant_pool.get_field_ref(index).unwrap();
-                    let field_name = self
-                        .class
-                        .constant_pool
-                        .get_utf8(field_ref.name_index)
-                        .unwrap();
-                    let field_class = self
-                        .class
-                        .constant_pool
-                        .get_class(field_ref.class_index)
-                        .unwrap();
-                    let field_class_name = self
-                        .class
-                        .constant_pool
-                        .get_utf8(field_class.name_index)
-                        .unwrap();
-                    writeln!(
-                        self.file,
-                        "declare {field_type} @{mangled_name}__get(%ref)",
-                        field_type = tlt_field_type(&field_ref.descriptor),
-                        mangled_name = mangle_field_name(field_class_name, field_name)
-                    )?;
-                    writeln!(
-                        self.file,
-                        "declare void @{mangled_name}__set(%ref, {field_type})",
-                        field_type = tlt_field_type(&field_ref.descriptor),
-                        mangled_name = mangle_field_name(field_class_name, field_name)
-                    )?;
-                }
                 _ => {}
             }
         }
@@ -203,7 +230,12 @@ impl ClassCodeGen {
             self.file,
             "\ndefine {return_type} @{mangled_name}(",
             return_type = tlt_return_type(&method.descriptor.ret),
-            mangled_name = mangle_method_name(class_name, method_name, &method.descriptor.params)
+            mangled_name = mangle_method_name(
+                class_name,
+                method_name,
+                &method.descriptor.ret,
+                &method.descriptor.params
+            )
         )?;
         for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
             if i > 0 {
@@ -310,6 +342,7 @@ impl ClassCodeGen {
             mangled_name = mangle_method_name(
                 method_class_name,
                 method_name,
+                &method_ref.descriptor.ret,
                 &method_ref.descriptor.params
             )
         )?;
@@ -396,14 +429,23 @@ fn mangle_field_name(class_name: &str, field_name: &str) -> String {
 fn mangle_method_name(
     class_name: &str,
     method_name: &str,
+    rettype: &ReturnTypeDescriptor,
     params: &[ParameterDescriptor],
 ) -> String {
     let mangled_class_name = mangle(class_name);
     let mangled_method_name = match method_name {
         "<init>" => "_init".to_owned(),
+        "<clinit>" => "_clinit".to_owned(),
         _ => mangle(method_name),
     };
     let mut mangled = format!("_Jm_{}_{}", mangled_class_name, mangled_method_name);
+    mangled.push_str("__");
+    match rettype {
+        ReturnTypeDescriptor::Void => mangled.push_str("Z"),
+        ReturnTypeDescriptor::Field(field_type) => {
+            mangled.push_str(&mangle(&field_type.to_string()))
+        }
+    };
     if params.len() > 0 {
         mangled.push_str("__");
         for ParameterDescriptor::Field(field_type) in params {
@@ -421,6 +463,17 @@ fn mangle(input: &str) -> String {
     output = output.replace("/", "_");
     output = output.replace(".", "_");
     return output;
+}
+
+fn tlt_function_type(descr: &MethodDescriptor) -> String {
+    let mut output = tlt_return_type(&descr.ret).to_owned();
+    output.push_str(" (%ref");
+    for ParameterDescriptor::Field(field) in descr.params.iter() {
+        output.push_str(", ");
+        output.push_str(tlt_field_type(field));
+    }
+    output.push_str(")");
+    output
 }
 
 fn tlt_return_type(return_type: &ReturnTypeDescriptor) -> &'static str {

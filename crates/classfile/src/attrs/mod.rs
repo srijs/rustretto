@@ -9,7 +9,7 @@ pub use self::code::Code;
 pub mod stack_map_table;
 pub use self::stack_map_table::StackMapTable;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Attributes {
     attrs: Vec<(String, ByteBuf)>,
     consts: ConstantPool,

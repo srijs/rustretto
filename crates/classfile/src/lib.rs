@@ -34,15 +34,15 @@ pub struct Version {
     pub minor: u16,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Field {
     pub access_flags: FieldAccessFlags,
     pub name_index: ConstantIndex,
-    pub descriptor_index: ConstantIndex,
+    pub descriptor: FieldType,
     pub attributes: Attributes,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Method {
     pub access_flags: MethodAccessFlags,
     pub name_index: ConstantIndex,
@@ -53,6 +53,10 @@ pub struct Method {
 impl Method {
     pub fn is_static(&self) -> bool {
         self.access_flags.contains(MethodAccessFlags::STATIC)
+    }
+
+    pub fn is_abstract(&self) -> bool {
+        self.access_flags.contains(MethodAccessFlags::ABSTRACT)
     }
 }
 
@@ -194,11 +198,13 @@ impl ClassFileParser {
             let access_flags = FieldAccessFlags::from_bits_truncate(access_flags_bits);
             let name_index = ConstantIndex::parse(&mut self.reader)?;
             let descriptor_index = ConstantIndex::parse(&mut self.reader)?;
+            let descriptor_string = constants.get_utf8(descriptor_index).unwrap();
+            let descriptor = FieldType::parse(descriptor_string.as_bytes())?;
             let attributes = Attributes::parse(&mut self.reader, constants)?;
             fields.push(Field {
                 access_flags,
                 name_index,
-                descriptor_index,
+                descriptor,
                 attributes,
             })
         }

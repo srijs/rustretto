@@ -2,7 +2,7 @@ use std::io::BufRead;
 
 use failure::Fallible;
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MethodDescriptor {
     pub params: Vec<ParameterDescriptor>,
     pub ret: ReturnTypeDescriptor,
@@ -32,18 +32,18 @@ impl MethodDescriptor {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ParameterDescriptor {
     Field(FieldType),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ReturnTypeDescriptor {
     Field(FieldType),
     Void,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum FieldType {
     Base(BaseType),
     Object(ObjectType),
@@ -121,7 +121,7 @@ impl FieldType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BaseType {
     Byte,
     Char,
@@ -133,12 +133,12 @@ pub enum BaseType {
     Boolean,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ObjectType {
     pub class_name: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArrayType {
     pub component_type: Box<FieldType>,
 }

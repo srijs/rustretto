@@ -2,6 +2,7 @@ extern crate classfile;
 extern crate jar;
 #[macro_use]
 extern crate failure;
+extern crate indexmap;
 extern crate petgraph;
 #[macro_use]
 extern crate log;
@@ -28,6 +29,7 @@ mod generate;
 mod loader;
 mod translate;
 mod types;
+mod vtable;
 
 use driver::Driver;
 
