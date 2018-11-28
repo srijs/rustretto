@@ -381,6 +381,7 @@ impl ClassCodeGen {
                 let vtable = self.vtables.get(method_class_name)?;
                 let (offset, _) = vtable.get(method_name, &method_ref.descriptor).unwrap();
 
+                writeln!(self.file, "  ; prepare virtual dispatch")?;
                 let tmp_vtblraw = self.var_id_gen.gen();
                 writeln!(
                     self.file,
@@ -413,6 +414,7 @@ impl ClassCodeGen {
                     fptrptr = tmp_fptrptr,
                     ftyp = tlt_function_type(&method_ref.descriptor)
                 )?;
+                writeln!(self.file, "  ; invoke {}", method_name)?;
 
                 format!("%t{}", tmp_fptr)
             }
