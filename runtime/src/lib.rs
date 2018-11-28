@@ -2,7 +2,9 @@ extern crate libc;
 
 use std::ptr;
 
-use libc::{c_char, c_void};
+use libc::c_void;
+
+mod io;
 
 #[repr(C)]
 pub struct Ref {
@@ -76,15 +78,10 @@ pub unsafe extern "C" fn _Jm_java_lang_Object__clinit__Z(_this: Ref) {}
 
 #[no_mangle]
 pub unsafe extern "C" fn _Jf_java_lang_System_out__get(_this: Ref) -> Ref {
-    Ref::null()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn _Jm_java_io_PrintStream_println__Z__Ljava_lang_String_2(
-    _this: Ref,
-    string: Ref,
-) {
-    libc::puts(string.object as *const c_char);
+    Ref {
+        object: ptr::null(),
+        vtable: io::VTABLE_PRINTSTREAM as *const io::VTablePrintStream as *const c_void,
+    }
 }
 
 #[no_mangle]

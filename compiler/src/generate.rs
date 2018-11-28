@@ -13,26 +13,37 @@ use classfile::{constant_pool::Constant, ClassFile, ConstantIndex, ConstantPool,
 use failure::Fallible;
 
 use blocks::BlockGraph;
+use classes::ClassGraph;
+use loader::Class;
 use translate::{
-    BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId, VarIdGen,
+    BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId,
 };
 use types::Type;
-use vtable::VTable;
+use vtable::VTableMap;
 
 pub(crate) struct CodeGen {
+    classes: ClassGraph,
+    vtables: VTableMap,
     target_path: PathBuf,
     target_triple: String,
 }
 
 impl CodeGen {
-    pub fn new(target_path: PathBuf, target_triple: String) -> Self {
+    pub fn new(classes: ClassGraph, target_path: PathBuf, target_triple: String) -> Self {
+        let vtables = VTableMap::new(classes.clone());
         CodeGen {
+            classes,
+            vtables,
             target_path,
             target_triple,
         }
     }
 
-    pub fn generate_class(&self, class: &Arc<ClassFile>) -> Fallible<ClassCodeGen> {
+    pub fn generate_class(&self, name: &str) -> Fallible<ClassCodeGen> {
+        let class = match self.classes.get(name)? {
+            Class::File(class_file) => class_file,
+            _ => bail!("can't generate code for array class"),
+        };
         let class_name = class
             .constant_pool
             .get_utf8(class.get_this_class().name_index)
@@ -41,7 +52,10 @@ impl CodeGen {
         Ok(ClassCodeGen {
             file: BufWriter::new(file),
             class: class.clone(),
+            classes: self.classes.clone(),
+            vtables: self.vtables.clone(),
             target_triple: self.target_triple.clone(),
+            var_id_gen: TmpVarIdGen::new(),
         })
     }
 }
@@ -49,7 +63,10 @@ impl CodeGen {
 pub(crate) struct ClassCodeGen {
     file: BufWriter<File>,
     class: Arc<ClassFile>,
+    classes: ClassGraph,
+    vtables: VTableMap,
     target_triple: String,
+    var_id_gen: TmpVarIdGen,
 }
 
 impl ClassCodeGen {
@@ -79,26 +96,26 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_type(&mut self, class_name: &str, vtable: &VTable) -> Fallible<()> {
+    pub(crate) fn gen_vtable_type(&mut self, class_name: &str) -> Fallible<()> {
+        let vtable = self.vtables.get(class_name)?;
         writeln!(self.file, "%vtable.{} = type {{", mangle(class_name))?;
-        for (idx, (key, _)) in vtable.method_dispatch.iter().enumerate() {
-            write!(
-                self.file,
-                "  {} *",
-                tlt_function_type(&key.method_descriptor)
-            )?;
-            if idx < vtable.method_dispatch.len() - 1 {
-                writeln!(self.file, ",")?;
+        for (idx, (key, _)) in vtable.iter().enumerate() {
+            let ftyp = tlt_function_type(&key.method_descriptor);
+            write!(self.file, "  {} *", ftyp)?;
+            if idx < vtable.len() - 1 {
+                write!(self.file, ",")?;
             } else {
-                writeln!(self.file, "")?;
+                write!(self.file, "")?;
             }
+            writeln!(self.file, " ; {}", key.method_name)?;
         }
         writeln!(self.file, "}}")?;
 
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_const(&mut self, class_name: &str, vtable: &VTable) -> Fallible<()> {
+    pub(crate) fn gen_vtable_const(&mut self, class_name: &str) -> Fallible<()> {
+        let vtable = self.vtables.get(class_name)?;
         let mangled_class_name = mangle(class_name);
 
         writeln!(
@@ -106,7 +123,7 @@ impl ClassCodeGen {
             "@vtable.{} = constant %vtable.{} {{",
             mangled_class_name, mangled_class_name
         )?;
-        for (idx, (key, target)) in vtable.method_dispatch.iter().enumerate() {
+        for (idx, (key, target)) in vtable.iter().enumerate() {
             write!(
                 self.file,
                 "  {} * @{}",
@@ -118,7 +135,7 @@ impl ClassCodeGen {
                     &key.method_descriptor.params
                 )
             )?;
-            if idx < vtable.method_dispatch.len() - 1 {
+            if idx < vtable.len() - 1 {
                 writeln!(self.file, ",")?;
             } else {
                 writeln!(self.file, "")?;
@@ -173,12 +190,6 @@ impl ClassCodeGen {
     }
 
     pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
-        let class_name = self
-            .class
-            .constant_pool
-            .get_utf8(self.class.get_this_class().name_index)
-            .unwrap();
-
         let filename = self.class.attributes.get::<SourceFile>()?;
         let target_datalayout = target_datalayout(&self.target_triple)?;
 
@@ -220,7 +231,6 @@ impl ClassCodeGen {
         method: &Method,
         blocks: &BlockGraph,
         consts: &ConstantPool,
-        var_id_gen: &mut VarIdGen,
     ) -> Fallible<()> {
         let class_name = consts
             .get_utf8(self.class.get_this_class().name_index)
@@ -245,7 +255,7 @@ impl ClassCodeGen {
         }
         writeln!(self.file, ") {{")?;
         for block in blocks.blocks() {
-            self.gen_block(block, blocks, consts, var_id_gen)?;
+            self.gen_block(block, blocks, consts)?;
         }
         writeln!(self.file, "}}")?;
         Ok(())
@@ -256,7 +266,6 @@ impl ClassCodeGen {
         block: &BasicBlock,
         blocks: &BlockGraph,
         consts: &ConstantPool,
-        var_id_gen: &mut VarIdGen,
     ) -> Fallible<()> {
         writeln!(self.file, "B{}:", block.address)?;
         self.gen_phi_nodes(block, blocks)?;
@@ -267,7 +276,7 @@ impl ClassCodeGen {
             BranchStub::Goto(addr) => writeln!(self.file, "  br label %B{}", addr)?,
             BranchStub::Return(None) => writeln!(self.file, "  ret void")?,
             BranchStub::IfICmp(comp, var1, var2_opt, if_addr, else_addr) => {
-                let tmp = var_id_gen.gen(Type::int());
+                let tmpid = self.var_id_gen.gen();
                 let code = match comp {
                     Comparator::Eq => "eq",
                     Comparator::Ge => "sge",
@@ -276,19 +285,19 @@ impl ClassCodeGen {
                     writeln!(
                         self.file,
                         "  %tmp{} = icmp {} i32 %v{}, %v{}",
-                        tmp.1, code, var1.1, var2.1
+                        tmpid, code, var1.1, var2.1
                     )?;
                 } else {
                     writeln!(
                         self.file,
                         "  %tmp{} = icmp {} i32 0, %v{}",
-                        tmp.1, code, var1.1
+                        tmpid, code, var1.1
                     )?;
                 }
                 writeln!(
                     self.file,
                     "  br i1 %tmp{}, label %B{}, label %B{}",
-                    tmp.1, if_addr, else_addr
+                    tmpid, if_addr, else_addr
                 )?;
             }
             _ => unimplemented!(),
@@ -297,54 +306,138 @@ impl ClassCodeGen {
     }
 
     fn gen_statement(&mut self, stmt: &Statement, consts: &ConstantPool) -> Fallible<()> {
+        let dest;
         if let Some(ref var) = stmt.assign {
-            write!(self.file, "  %v{} = ", var.1)?;
+            dest = Dest::Assign(var.clone());
         } else {
-            write!(self.file, "  ")?;
+            dest = Dest::Ignore;
         }
-        self.gen_expr(&stmt.expression, consts)
+        self.gen_expr(&stmt.expression, consts, dest)
     }
 
-    fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool, dest: Dest) -> Fallible<()> {
         match expr {
-            Expr::ConstInt(i) => writeln!(self.file, "and i32 {}, {}", i, i)?,
-            Expr::ConstString(index) => self.gen_load_string(*index, consts)?,
-            Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts)?,
-            Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts)?,
-            Expr::IInc(var, i) => writeln!(self.file, "add i32 %v{}, {}", var.1, i)?,
+            Expr::ConstInt(i) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(self.file, "  %v{} = and i32 {}, {}", dest_var.1, i, i)?;
+                }
+            }
+            Expr::ConstString(index) => self.gen_load_string(*index, consts, dest)?,
+            Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts, dest)?,
+            Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
+            Expr::IInc(var, i) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(self.file, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
+                }
+            }
             _ => bail!("unknown expression {:?}", expr),
         }
         Ok(())
     }
 
-    fn gen_load_string(&mut self, index: ConstantIndex, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_load_string(
+        &mut self,
+        index: ConstantIndex,
+        consts: &ConstantPool,
+        dest: Dest,
+    ) -> Fallible<()> {
         let len = consts.get_utf8(index).unwrap().len();
-        writeln!(
-            self.file,
-            "call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
-            len,
-            len + 1,
-            len + 1,
-            index.as_u16()
-        )?;
+        if let Dest::Assign(dest_var) = dest {
+            writeln!(
+                self.file,
+                "  %v{} = call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
+                dest_var.1,
+                len,
+                len + 1,
+                len + 1,
+                index.as_u16()
+            )?;
+        }
         Ok(())
     }
 
-    fn gen_expr_invoke(&mut self, expr: &InvokeExpr, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_expr_invoke(
+        &mut self,
+        expr: &InvokeExpr,
+        consts: &ConstantPool,
+        dest: Dest,
+    ) -> Fallible<()> {
         let method_ref = consts.get_method_ref(expr.index).unwrap();
         let method_name = consts.get_utf8(method_ref.name_index).unwrap();
         let method_class = consts.get_class(method_ref.class_index).unwrap();
         let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
+        let mangled_method_class_name = mangle(method_class_name);
+
+        /*
+        %v9vtblraw = extractvalue %ref %v9, 1
+        %v9vtbl = bitcast i8* %v9vtblraw to %vtable.java_io_PrintStream*
+        %v9fptrptr = getelementptr %vtable.java_io_PrintStream, %vtable.java_io_PrintStream* %v9vtbl, i64 0, i32 13
+        %v9fptr = load void (%ref, %ref)*, void (%ref, %ref)** %v9fptrptr
+        call void %v9fptr(%ref %v9, %ref %v10)
+        */
+
+        let fptr = match expr.target {
+            InvokeTarget::Virtual(ref var) => {
+                let vtable = self.vtables.get(method_class_name)?;
+                let (offset, _) = vtable.get(method_name, &method_ref.descriptor).unwrap();
+
+                let tmp_vtblraw = self.var_id_gen.gen();
+                writeln!(
+                    self.file,
+                    "  %t{vtblraw} = extractvalue %ref %v{}, 1",
+                    var.1,
+                    vtblraw = tmp_vtblraw
+                )?;
+                let tmp_vtbl = self.var_id_gen.gen();
+                writeln!(
+                    self.file,
+                    "  %t{vtbl} = bitcast i8* %t{vtblraw} to %vtable.{class}*",
+                    class = mangled_method_class_name,
+                    vtbl = tmp_vtbl,
+                    vtblraw = tmp_vtblraw
+                )?;
+                let tmp_fptrptr = self.var_id_gen.gen();
+                writeln!(
+                    self.file,
+                    "  %t{fptrptr} = getelementptr %vtable.{class}, %vtable.{class}* %t{vtbl}, i64 0, i32 {offset}",
+                    offset = offset,
+                    class = mangled_method_class_name,
+                    vtbl = tmp_vtbl,
+                    fptrptr = tmp_fptrptr
+                )?;
+                let tmp_fptr = self.var_id_gen.gen();
+                writeln!(
+                    self.file,
+                    "  %t{fptr} = load {ftyp}*, {ftyp}** %t{fptrptr}",
+                    fptr = tmp_fptr,
+                    fptrptr = tmp_fptrptr,
+                    ftyp = tlt_function_type(&method_ref.descriptor)
+                )?;
+
+                format!("%t{}", tmp_fptr)
+            }
+            _ => format!(
+                "@{}",
+                mangle_method_name(
+                    method_class_name,
+                    method_name,
+                    &method_ref.descriptor.ret,
+                    &method_ref.descriptor.params
+                )
+            ),
+        };
+
+        if let Dest::Assign(dest_var) = dest {
+            write!(self.file, "  %v{} = ", dest_var.1)?;
+        } else {
+            write!(self.file, "  ")?;
+        }
+
         write!(
             self.file,
-            "call {return_type} @{mangled_name}(",
-            return_type = tlt_return_type(&method_ref.descriptor.ret),
-            mangled_name = mangle_method_name(
-                method_class_name,
-                method_name,
-                &method_ref.descriptor.ret,
-                &method_ref.descriptor.params
-            )
+            "call {return_type} {fptr}(",
+            fptr = fptr,
+            return_type = tlt_return_type(&method_ref.descriptor.ret)
         )?;
 
         let mut args = vec![];
@@ -371,17 +464,25 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    fn gen_expr_get_static(&mut self, index: ConstantIndex, consts: &ConstantPool) -> Fallible<()> {
+    fn gen_expr_get_static(
+        &mut self,
+        index: ConstantIndex,
+        consts: &ConstantPool,
+        dest: Dest,
+    ) -> Fallible<()> {
         let field_ref = consts.get_field_ref(index).unwrap();
         let field_name = consts.get_utf8(field_ref.name_index).unwrap();
         let field_class = consts.get_class(field_ref.class_index).unwrap();
         let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
-        writeln!(
-            self.file,
-            "call {field_type} @{mangled_name}__get(%ref zeroinitializer)",
-            field_type = tlt_field_type(&field_ref.descriptor),
-            mangled_name = mangle_field_name(field_class_name, field_name)
-        )?;
+        if let Dest::Assign(dest_var) = dest {
+            writeln!(
+                self.file,
+                "  %v{} = call {field_type} @{mangled_name}__get(%ref zeroinitializer)",
+                dest_var.1,
+                field_type = tlt_field_type(&field_ref.descriptor),
+                mangled_name = mangle_field_name(field_class_name, field_name)
+            )?;
+        }
         Ok(())
     }
 
@@ -412,6 +513,27 @@ impl ClassCodeGen {
             writeln!(self.file, "")?;
         }
         Ok(())
+    }
+}
+
+enum Dest {
+    Ignore,
+    Assign(VarId),
+}
+
+pub struct TmpVarIdGen {
+    next_id: u64,
+}
+
+impl TmpVarIdGen {
+    pub fn new() -> Self {
+        TmpVarIdGen { next_id: 0 }
+    }
+
+    pub fn gen(&mut self) -> u64 {
+        let var_id = self.next_id;
+        self.next_id += 1;
+        var_id
     }
 }
 

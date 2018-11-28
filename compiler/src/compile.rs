@@ -10,7 +10,6 @@ use generate::CodeGen;
 use loader::Class;
 use translate::{self, VarIdGen};
 use types::Type;
-use vtable::VTable;
 
 pub(crate) struct Compiler {
     classes: ClassGraph,
@@ -28,9 +27,7 @@ impl Compiler {
             class => bail!("unexpected class type {:?}", class),
         };
 
-        let vtable = VTable::new(class_name, &self.classes)?;
-
-        let mut classgen = self.codegen.generate_class(&cf)?;
+        let mut classgen = self.codegen.generate_class(class_name)?;
 
         classgen.gen_prelude()?;
 
@@ -44,9 +41,8 @@ impl Compiler {
                     }
                     match self.classes.get(ext_class_name)? {
                         Class::File(ext_class_file) => {
-                            let ext_vtable = VTable::new(ext_class_name, &self.classes)?;
                             classgen.gen_extern_decls(&ext_class_file)?;
-                            classgen.gen_vtable_type(ext_class_name, &ext_vtable)?;
+                            classgen.gen_vtable_type(ext_class_name)?;
                         }
                         _ => {}
                     }
@@ -55,8 +51,8 @@ impl Compiler {
             }
         }
 
-        classgen.gen_vtable_type(class_name, &vtable)?;
-        classgen.gen_vtable_const(class_name, &vtable)?;
+        classgen.gen_vtable_type(class_name)?;
+        classgen.gen_vtable_const(class_name)?;
 
         for method in cf.methods.iter() {
             let mut var_id_gen = VarIdGen::new();
@@ -80,7 +76,7 @@ impl Compiler {
                 &cf.constant_pool,
                 &mut var_id_gen,
             )?;
-            classgen.gen_method(&method, &blocks, &cf.constant_pool, &mut var_id_gen)?;
+            classgen.gen_method(&method, &blocks, &cf.constant_pool)?;
         }
         classgen.gen_main()?;
         Ok(())

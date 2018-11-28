@@ -45,7 +45,7 @@ impl Driver {
 
         let classes = ClassGraph::build(class_file, self.loader.clone())?;
 
-        let codegen = CodeGen::new(self.temppath.clone(), self.target.clone());
+        let codegen = CodeGen::new(classes.clone(), self.temppath.clone(), self.target.clone());
         let mut compiler = Compiler::new(classes, codegen);
 
         compiler.compile(&class_name)
