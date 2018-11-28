@@ -122,6 +122,12 @@ impl VTableMap {
                 .get_utf8(method.name_index)
                 .unwrap()
                 .to_owned();
+
+            // skip instance initialization methods
+            if method_name == "<init>" {
+                continue;
+            }
+
             let key = MethodDispatchKey {
                 method_name,
                 method_descriptor: method.descriptor.clone(),
