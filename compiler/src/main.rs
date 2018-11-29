@@ -47,7 +47,9 @@ struct Compile {
     #[structopt(parse(from_os_str), short = "r")]
     runtime: PathBuf,
     #[structopt(parse(from_os_str))]
-    input: PathBuf,
+    inputs: Vec<PathBuf>,
+    #[structopt(long = "main")]
+    main: String,
     #[structopt(short = "O", default_value = "0")]
     optimize: u32,
     #[structopt(parse(from_os_str), long = "save-temp")]
@@ -69,7 +71,7 @@ fn compile(c: Compile) -> Fallible<()> {
 
     let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
 
-    driver.compile(&c.input)?;
+    driver.compile(&c.main, &c.inputs)?;
     driver.link(&c.runtime, &c.output)?;
 
     Ok(())

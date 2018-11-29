@@ -75,12 +75,23 @@ impl TestCase {
             .current_dir(&tmppath)
             .unwrap();
 
+        let mut classes = vec![];
+        for entry_result in tmppath.read_dir().unwrap() {
+            let entry = entry_result.unwrap();
+            let path = entry.path();
+            let is_class = path.extension().map(|ext| ext == "class").unwrap_or(false);
+            if is_class {
+                classes.push(path);
+            }
+        }
+
         Assert::cargo_binary("compiler")
             .with_args(&["-r"])
             .with_args(&[&runtime_path])
             .with_args(&["-o"])
             .with_args(&[&output_path])
-            .with_args(&[tmppath.join("Test.class")])
+            .with_args(&["--main", "Test"])
+            .with_args(&classes)
             .unwrap();
 
         Assert::command(&[output_path])

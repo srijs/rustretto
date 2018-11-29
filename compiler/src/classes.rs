@@ -29,7 +29,7 @@ pub(crate) struct ClassGraph {
 }
 
 impl ClassGraph {
-    fn new(loader: BootstrapClassLoader) -> Self {
+    pub fn new(loader: BootstrapClassLoader) -> Self {
         let graph = StableGraph::new();
         let name_map = HashMap::new();
         let inner = Inner { graph, name_map };
@@ -51,15 +51,11 @@ impl ClassGraph {
         }
     }
 
-    pub fn build(root: ClassFile, loader: BootstrapClassLoader) -> Fallible<Self> {
-        let graph = Self::new(loader);
-        let pool = root.constant_pool.clone();
-        let name = pool.get_utf8(root.get_this_class().name_index).unwrap();
-        let _root_idx = graph
-            .inner
+    pub fn add(&self, class_file: ClassFile) {
+        let name = class_file.get_name().to_owned();
+        self.inner
             .lock()
             .unwrap()
-            .add_class(name, Class::File(Arc::new(root)));
-        Ok(graph)
+            .add_class(&name, Class::File(Arc::new(class_file)));
     }
 }

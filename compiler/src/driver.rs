@@ -30,25 +30,27 @@ impl Driver {
         })
     }
 
-    pub fn compile(&self, input: &PathBuf) -> Fallible<()> {
-        let file = fs::File::open(input)?;
-        let class_file = ClassFile::parse(file)?;
+    pub fn compile(&self, main: &str, inputs: &[PathBuf]) -> Fallible<()> {
+        let classes = ClassGraph::new(self.loader.clone());
 
-        let class_name = {
-            let class = class_file.get_this_class();
-            class_file
-                .constant_pool
-                .get_utf8(class.name_index)
-                .unwrap()
-                .to_owned()
-        };
+        let mut class_names = vec![];
+        for input in inputs {
+            let file = fs::File::open(input)?;
+            let class_file = ClassFile::parse(file)?;
+            let class_name = class_file.get_name().to_owned();
 
-        let classes = ClassGraph::build(class_file, self.loader.clone())?;
+            classes.add(class_file);
+            class_names.push(class_name);
+        }
 
         let codegen = CodeGen::new(classes.clone(), self.temppath.clone(), self.target.clone());
-        let mut compiler = Compiler::new(classes, codegen);
+        let mut compiler = Compiler::new(classes.clone(), codegen);
 
-        compiler.compile(&class_name)
+        for class_name in class_names {
+            compiler.compile(&class_name, class_name == main)?;
+        }
+
+        Ok(())
     }
 
     pub fn link(&self, runtime_path: &Path, output_path: &Path) -> Fallible<()> {
