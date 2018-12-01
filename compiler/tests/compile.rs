@@ -16,7 +16,8 @@ fn println() {
                 System.out.println("Hello, World!");
             }
         }"#,
-    ).expect_output("Hello, World!\n");
+    )
+    .expect_output("Hello, World!\n");
 }
 
 #[test]
@@ -31,7 +32,8 @@ fn for_loop() {
                 }
             }
         }"#,
-    ).expect_output("X\nX\nX\n");
+    )
+    .expect_output("X\nX\nX\n");
 }
 
 #[test]
@@ -52,7 +54,38 @@ fn if_else() {
               	print(false);
             }
         }"#,
-    ).expect_output("It's true!\nFalse :(\n");
+    )
+    .expect_output("It's true!\nFalse :(\n");
+}
+
+#[test]
+fn inheritance() {
+    TestCase(
+        r#"
+        public class Test {
+            public static void main(String[] args) {
+                class A {
+                    public void printName() {
+                        System.out.println("A");
+                    }
+                }
+
+                class B extends A {
+                    @Override
+                    public void printName() {
+                        System.out.println("B");
+                    }
+                }
+
+                A a = new A();
+                B b = new B();
+
+                ((A)a).printName();
+                ((A)b).printName();
+            }
+        }"#,
+    )
+    .expect_output("A\nB\n")
 }
 
 struct TestCase(&'static str);

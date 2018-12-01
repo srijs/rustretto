@@ -69,6 +69,7 @@ pub(crate) enum Expr {
     GetStatic(ConstantIndex),
     Invoke(InvokeExpr),
     IInc(VarId, i32),
+    New(String),
 }
 
 #[derive(Debug)]
@@ -129,6 +130,12 @@ impl<'a> TranslateInstr<'a> {
 
     fn store(&mut self, idx: usize) {
         self.state.store(idx)
+    }
+
+    fn duplicate(&mut self) {
+        let var = self.state.pop();
+        self.state.push(var.clone());
+        self.state.push(var);
     }
 
     fn get_static(self, idx: u16) -> Fallible<Option<TranslateNext>> {
@@ -250,6 +257,18 @@ impl<'a> TranslateInstr<'a> {
             None,
         )));
     }
+
+    fn new(self, idx: u16) -> Fallible<Option<TranslateNext>> {
+        let class = self.consts.get_class(ConstantIndex::from_u16(idx)).unwrap();
+        let class_name = self.consts.get_utf8(class.name_index).unwrap();
+        let var = self.var_id_gen.gen(Type::Object(class_name.to_owned()));
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::New(class_name.to_owned()),
+        };
+        return Ok(Some(TranslateNext::Statement(statement)));
+    }
 }
 
 fn translate_next(
@@ -268,9 +287,12 @@ fn translate_next(
         match instr {
             Instr::ALoad0 => t.load(0),
             Instr::ALoad1 => t.load(1),
+            Instr::ALoad2 => t.load(2),
             Instr::AStore1 => t.store(1),
+            Instr::AStore2 => t.store(2),
             Instr::ILoad(idx) => t.load(*idx as usize),
             Instr::IStore(idx) => t.store(*idx as usize),
+            Instr::Dup => t.duplicate(),
             Instr::IConst0 => return t.iconst(0),
             Instr::IConst1 => return t.iconst(1),
             Instr::IConst2 => return t.iconst(2),
@@ -285,6 +307,7 @@ fn translate_next(
             Instr::Return => return t.ret(),
             Instr::IfEq(offset) => return t.if_zcmp(*offset, Comparator::Eq),
             Instr::IfICmpGe(offset) => return t.if_icmp(*offset, Comparator::Ge),
+            Instr::New(idx) => return t.new(*idx),
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }

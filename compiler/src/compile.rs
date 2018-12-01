@@ -52,6 +52,7 @@ impl Compiler {
         }
 
         classgen.gen_vtable_type(class_name)?;
+        classgen.gen_vtable_decls(class_name)?;
         classgen.gen_vtable_const(class_name)?;
 
         for method in cf.methods.iter() {

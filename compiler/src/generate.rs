@@ -146,11 +146,50 @@ impl ClassCodeGen {
         Ok(())
     }
 
+    pub(crate) fn gen_vtable_decls(&mut self, class_name: &str) -> Fallible<()> {
+        let vtable = self.vtables.get(class_name)?;
+
+        for (key, target) in vtable.iter() {
+            if target.class_name == class_name {
+                continue;
+            }
+            write!(
+                self.file,
+                "declare {return_type} @{mangled_name}(",
+                return_type = tlt_return_type(&key.method_descriptor.ret),
+                mangled_name = mangle_method_name(
+                    &target.class_name,
+                    &key.method_name,
+                    &key.method_descriptor.ret,
+                    &key.method_descriptor.params
+                )
+            )?;
+            write!(self.file, "%ref")?;
+            for ParameterDescriptor::Field(field) in key.method_descriptor.params.iter() {
+                write!(self.file, ", {}", tlt_field_type(field))?;
+            }
+            writeln!(self.file, ")")?;
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn gen_extern_decls(&mut self, class: &ClassFile) -> Fallible<()> {
         let class_name = class.get_name();
+        let manged_class_name = mangle(class_name);
+
+        writeln!(
+            self.file,
+            "@vtable.{class} = external global %vtable.{class}",
+            class = manged_class_name
+        )?;
 
         for method in class.methods.iter() {
             let method_name = class.constant_pool.get_utf8(method.name_index).unwrap();
+
+            if method_name != "<init>" && !method.is_static() {
+                continue;
+            }
 
             write!(
                 self.file,
@@ -328,6 +367,11 @@ impl ClassCodeGen {
             Expr::IInc(var, i) => {
                 if let Dest::Assign(dest_var) = dest {
                     writeln!(self.file, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
+                }
+            }
+            Expr::New(class_name) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(self.file, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%vtable.{class}* @vtable.{class} to i8*), 1", dest_var.1, class = mangle(class_name))?;
                 }
             }
             _ => bail!("unknown expression {:?}", expr),
