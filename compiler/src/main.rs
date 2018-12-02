@@ -63,16 +63,20 @@ fn compile(c: Compile) -> Fallible<()> {
 
     let tempdir = TempDir::new()?;
 
-    let temppath = c
-        .save_temp
-        .as_ref()
-        .map(|p| p.as_ref())
-        .unwrap_or(tempdir.path());
+    {
+        let temppath = c
+            .save_temp
+            .as_ref()
+            .map(|p| p.as_ref())
+            .unwrap_or(tempdir.path());
 
-    let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
+        let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
 
-    driver.compile(&c.main, &c.inputs)?;
-    driver.link(&c.runtime, &c.output)?;
+        driver.compile(&c.main, &c.inputs)?;
+        driver.link(&c.runtime, &c.output)?;
+    }
+
+    tempdir.close()?;
 
     Ok(())
 }
