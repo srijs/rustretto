@@ -21,7 +21,6 @@ pub(crate) struct Driver {
 impl Driver {
     pub fn new(home: PathBuf, target: String, optimize: u32, temppath: &Path) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
-        let tmpdir = TempDir::new()?;
         Ok(Driver {
             loader,
             temppath: temppath.into(),
