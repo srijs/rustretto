@@ -26,7 +26,7 @@ pub mod descriptors;
 pub use self::descriptors::{FieldType, MethodDescriptor};
 pub mod instructions;
 
-use buffer::ByteBuf;
+use buffer::{ByteBuf, StrBuf};
 
 #[derive(Debug)]
 pub struct Version {
@@ -121,7 +121,7 @@ impl ClassFile {
         })
     }
 
-    pub fn get_name(&self) -> &str {
+    pub fn get_name(&self) -> &self::constant_pool::Utf8Constant {
         self.constant_pool
             .get_utf8(self.get_this_class().name_index)
             .unwrap()

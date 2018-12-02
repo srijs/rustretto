@@ -2,7 +2,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
 use super::{ConstantIndex, ConstantPool};
-use ByteBuf;
+use {ByteBuf, StrBuf};
 
 pub mod code;
 pub use self::code::Code;
@@ -11,7 +11,7 @@ pub use self::stack_map_table::StackMapTable;
 
 #[derive(Clone, Debug)]
 pub struct Attributes {
-    attrs: Vec<(String, ByteBuf)>,
+    attrs: Vec<(StrBuf, ByteBuf)>,
     consts: ConstantPool,
 }
 
@@ -24,7 +24,7 @@ impl Attributes {
             let name = consts.get_utf8(name_index).unwrap();
             let len = reader.read_u32::<BigEndian>()?;
             let info = reader.split_to(len as usize);
-            attrs.push((name.into(), info));
+            attrs.push((name.0.clone(), info));
         }
         Ok(Attributes {
             attrs,
@@ -46,7 +46,7 @@ impl Attributes {
     pub fn get_raw(&self, name: &str) -> Option<RawAttribute> {
         self.attrs
             .iter()
-            .find(|(s, _)| s == name)
+            .find(|(s, _)| &**s == name)
             .map(|(_, bytes)| RawAttribute {
                 bytes: bytes.clone(),
             })

@@ -1,6 +1,6 @@
 use std::ptr;
 
-use libc::{c_void, c_char};
+use libc::{c_char, c_void};
 
 use super::Ref;
 

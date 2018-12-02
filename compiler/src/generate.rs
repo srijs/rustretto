@@ -5,11 +5,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use classfile::attrs::SourceFile;
+use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::{
     ArrayType, BaseType, FieldType, MethodDescriptor, ObjectType, ParameterDescriptor,
     ReturnTypeDescriptor,
 };
-use classfile::{constant_pool::Constant, ClassFile, ConstantIndex, ConstantPool, Method};
+use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
 use failure::Fallible;
 
 use blocks::BlockGraph;
@@ -96,7 +97,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_type(&mut self, class_name: &str) -> Fallible<()> {
+    pub(crate) fn gen_vtable_type(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
         writeln!(self.file, "%vtable.{} = type {{", mangle(class_name))?;
         for (idx, (key, _)) in vtable.iter().enumerate() {
@@ -114,7 +115,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_const(&mut self, class_name: &str) -> Fallible<()> {
+    pub(crate) fn gen_vtable_const(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
         let mangled_class_name = mangle(class_name);
 
@@ -146,11 +147,11 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_decls(&mut self, class_name: &str) -> Fallible<()> {
+    pub(crate) fn gen_vtable_decls(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
 
         for (key, target) in vtable.iter() {
-            if target.class_name == class_name {
+            if target.class_name == *class_name {
                 continue;
             }
             write!(
@@ -187,7 +188,7 @@ impl ClassCodeGen {
         for method in class.methods.iter() {
             let method_name = class.constant_pool.get_utf8(method.name_index).unwrap();
 
-            if method_name != "<init>" && !method.is_static() {
+            if &**method_name != "<init>" && !method.is_static() {
                 continue;
             }
 

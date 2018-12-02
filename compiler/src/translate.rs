@@ -1,6 +1,6 @@
 use std::fmt;
 
-use classfile::constant_pool::Constant;
+use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::ReturnTypeDescriptor;
 use classfile::instructions::{Disassembler, Instr};
 use classfile::{ConstantIndex, ConstantPool};
@@ -69,7 +69,7 @@ pub(crate) enum Expr {
     GetStatic(ConstantIndex),
     Invoke(InvokeExpr),
     IInc(VarId, i32),
-    New(String),
+    New(Utf8Constant),
 }
 
 #[derive(Debug)]
@@ -261,11 +261,11 @@ impl<'a> TranslateInstr<'a> {
     fn new(self, idx: u16) -> Fallible<Option<TranslateNext>> {
         let class = self.consts.get_class(ConstantIndex::from_u16(idx)).unwrap();
         let class_name = self.consts.get_utf8(class.name_index).unwrap();
-        let var = self.var_id_gen.gen(Type::Object(class_name.to_owned()));
+        let var = self.var_id_gen.gen(Type::Object(class_name.clone()));
         self.state.push(var.clone());
         let statement = Statement {
             assign: Some(var),
-            expression: Expr::New(class_name.to_owned()),
+            expression: Expr::New(class_name.clone()),
         };
         return Ok(Some(TranslateNext::Statement(statement)));
     }

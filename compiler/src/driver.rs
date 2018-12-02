@@ -4,7 +4,6 @@ use std::process::Command;
 
 use classfile::ClassFile;
 use failure::Fallible;
-use tempfile::TempDir;
 
 use classes::ClassGraph;
 use compile::Compiler;
@@ -36,7 +35,7 @@ impl Driver {
         for input in inputs {
             let file = fs::File::open(input)?;
             let class_file = ClassFile::parse(file)?;
-            let class_name = class_file.get_name().to_owned();
+            let class_name = class_file.get_name().clone();
 
             classes.add(class_file);
             class_names.push(class_name);
@@ -46,7 +45,7 @@ impl Driver {
         let mut compiler = Compiler::new(classes.clone(), codegen);
 
         for class_name in class_names {
-            compiler.compile(&class_name, class_name == main)?;
+            compiler.compile(&class_name, &*class_name == main)?;
         }
 
         Ok(())

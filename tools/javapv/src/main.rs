@@ -35,7 +35,7 @@ fn format_constant(idx: u16, pool: &classfile::ConstantPool) -> String {
                 .unwrap();
             let name = pool.get_utf8(name_and_type.name_index).unwrap();
             let descriptor = pool.get_utf8(name_and_type.descriptor_index).unwrap();
-            if name == "<init>" {
+            if &**name == "<init>" {
                 format!("Method {}.\"<init>\":{}", class_name, descriptor)
             } else {
                 format!("Method {}.{}:{}", class_name, name, descriptor)
@@ -124,7 +124,7 @@ fn format_method(
     }
 
     let method_name = consts.get_utf8(method.name_index).unwrap();
-    if method_name == "<init>" {
+    if &**method_name == "<init>" {
         out.push_str(this_class_name);
     } else {
         match method.descriptor.ret {
@@ -235,7 +235,7 @@ fn analyze(opt: Opt) -> Fallible<()> {
         if let Ok(code) = method.attributes.get::<attrs::Code>() {
             let mut args_size = method.descriptor.params.len();
             let method_name = cf.constant_pool.get_utf8(method.name_index).unwrap();
-            if method_name == "<init>" {
+            if &**method_name == "<init>" {
                 args_size += 1;
             }
             println!("    Code:");

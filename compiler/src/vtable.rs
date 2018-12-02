@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
+use classfile::constant_pool::Utf8Constant;
 use classfile::{MethodAccessFlags, MethodDescriptor};
 use failure::Fallible;
-use indexmap::IndexMap;
+use indexmap::{Equivalent, IndexMap};
 
 use classes::ClassGraph;
 use loader::Class;
@@ -22,15 +24,40 @@ value info:
 
 */
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) struct MethodDispatchKey {
-    pub method_name: String,
+    pub method_name: Utf8Constant,
     pub method_descriptor: MethodDescriptor,
+}
+
+impl Hash for MethodDispatchKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.method_name.as_bytes());
+        self.method_descriptor.hash(state);
+    }
+}
+
+struct LookupKey<'a> {
+    method_name: &'a str,
+    method_descriptor: &'a MethodDescriptor,
+}
+
+impl<'a> Hash for LookupKey<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.method_name.as_bytes());
+        self.method_descriptor.hash(state);
+    }
+}
+
+impl<'a> Equivalent<MethodDispatchKey> for LookupKey<'a> {
+    fn equivalent(&self, key: &MethodDispatchKey) -> bool {
+        self.method_name == &*key.method_name && self.method_descriptor == &key.method_descriptor
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct MethodDispatchTarget {
-    pub class_name: String,
+    pub class_name: Utf8Constant,
     pub is_abstract: bool,
     pub is_override: bool,
 }
@@ -54,9 +81,9 @@ impl VTable {
         method_name: &str,
         method_descriptor: &MethodDescriptor,
     ) -> Option<(usize, &MethodDispatchTarget)> {
-        let key = MethodDispatchKey {
-            method_name: method_name.to_owned(),
-            method_descriptor: method_descriptor.clone(),
+        let key = LookupKey {
+            method_name,
+            method_descriptor,
         };
         if let Some((idx, _, target)) = self.table.get_full(&key) {
             Some((idx, target))
@@ -69,7 +96,7 @@ impl VTable {
 #[derive(Clone, Debug)]
 pub(crate) struct VTableMap {
     classes: ClassGraph,
-    inner: Arc<Mutex<HashMap<String, VTable>>>,
+    inner: Arc<Mutex<HashMap<Utf8Constant, VTable>>>,
 }
 
 impl VTableMap {
@@ -80,7 +107,7 @@ impl VTableMap {
         }
     }
 
-    pub fn get(&self, name: &str) -> Fallible<VTable> {
+    pub fn get(&self, name: &Utf8Constant) -> Fallible<VTable> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.contains_key(name) {
             let mut table = IndexMap::new();
@@ -121,10 +148,10 @@ impl VTableMap {
                 .constant_pool
                 .get_utf8(method.name_index)
                 .unwrap()
-                .to_owned();
+                .clone();
 
             // skip instance initialization methods
-            if method_name == "<init>" {
+            if &*method_name == "<init>" {
                 continue;
             }
 

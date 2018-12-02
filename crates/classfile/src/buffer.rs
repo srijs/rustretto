@@ -7,10 +7,14 @@ use cesu8;
 use failure::Fallible;
 use string;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct StrBuf(string::String<Bytes>);
 
 impl StrBuf {
+    pub(crate) fn from_str(s: &str) -> Self {
+        StrBuf(string::String::from_str(s))
+    }
+
     pub(crate) fn from_java_cesu8(bytes: &ByteBuf) -> Fallible<Self> {
         let s = match cesu8::from_java_cesu8(&bytes.0)? {
             Cow::Owned(s) => {

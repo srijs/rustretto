@@ -1,7 +1,7 @@
 use failure::Fallible;
 
 use classfile::attrs::Code;
-use classfile::constant_pool::Constant;
+use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::ParameterDescriptor;
 
 use classes::ClassGraph;
@@ -21,7 +21,7 @@ impl Compiler {
         Self { classes, codegen }
     }
 
-    pub fn compile(&mut self, class_name: &str, main: bool) -> Fallible<()> {
+    pub fn compile(&mut self, class_name: &Utf8Constant, main: bool) -> Fallible<()> {
         let cf = match self.classes.get(&class_name)? {
             Class::File(class_file) => class_file,
             class => bail!("unexpected class type {:?}", class),
@@ -59,11 +59,11 @@ impl Compiler {
             let mut var_id_gen = VarIdGen::new();
             let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
             let mut args = Vec::new();
-            if name == "<init>" {
+            if &**name == "<init>" {
                 let arg_type = Type::UninitializedThis;
                 args.push(var_id_gen.gen(arg_type));
             } else if !method.is_static() {
-                let arg_type = Type::Object(class_name.to_owned());
+                let arg_type = Type::Object(class_name.clone());
                 args.push(var_id_gen.gen(arg_type));
             }
             for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {

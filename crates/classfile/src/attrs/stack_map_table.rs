@@ -1,6 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
+use super::super::constant_pool::Utf8Constant;
 use super::super::{ConstantIndex, ConstantPool};
 use super::{private, Attribute, RawAttribute};
 use ByteBuf;
@@ -105,7 +106,7 @@ pub enum VerificationTypeInfo {
     Double,
     Null,
     UninitializedThis,
-    Object(String),
+    Object(Utf8Constant),
     Uninitialized(u16),
 }
 
@@ -125,7 +126,7 @@ fn parse_verification_type_info(
             let class_index = ConstantIndex::parse(bytes)?;
             let class_const = consts.get_class(class_index).unwrap();
             let class_name = consts.get_utf8(class_const.name_index).unwrap();
-            Ok(VerificationTypeInfo::Object(class_name.to_owned()))
+            Ok(VerificationTypeInfo::Object(class_name.clone()))
         }
         8 => Ok(VerificationTypeInfo::Uninitialized(
             bytes.read_u16::<BigEndian>()?,

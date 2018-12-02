@@ -1,3 +1,4 @@
+use classfile::constant_pool::Utf8Constant;
 use classfile::FieldType;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -8,7 +9,7 @@ pub enum Type {
     Long,
     Double,
     Null,
-    Object(String),
+    Object(Utf8Constant),
     Uninitialized,
     UninitializedThis,
 }
@@ -19,7 +20,7 @@ impl Type {
     }
 
     pub fn string() -> Self {
-        Type::Object("java.lang.String".to_owned())
+        Type::Object(Utf8Constant::from_str("java.lang.String"))
     }
 
     pub fn from_field_type(field_type: FieldType) -> Self {
@@ -28,10 +29,12 @@ impl Type {
                 classfile::descriptors::BaseType::Boolean => Self::int(),
                 _ => unimplemented!("unsupported base type {:?}", base_type),
             },
-            FieldType::Object(object_type) => Type::Object(object_type.class_name),
+            FieldType::Object(object_type) => {
+                Type::Object(Utf8Constant::from_str(&object_type.class_name))
+            }
             FieldType::Array(array_type) => {
                 let class_name = format!("[{}", array_type.component_type.to_string());
-                Type::Object(class_name)
+                Type::Object(Utf8Constant::from_str(&class_name))
             }
         }
     }

@@ -1,4 +1,6 @@
+use std::borrow::Borrow;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::ops::{Deref, Index};
 use std::sync::Arc;
@@ -52,9 +54,9 @@ impl ConstantPool {
         }
     }
 
-    pub fn get_utf8(&self, idx: ConstantIndex) -> Option<&str> {
+    pub fn get_utf8(&self, idx: ConstantIndex) -> Option<&Utf8Constant> {
         if let Some(&Constant::Utf8(ref strc)) = self.get_info(idx) {
-            Some(&strc)
+            Some(strc)
         } else {
             None
         }
@@ -360,19 +362,38 @@ pub struct NameAndTypeConstant {
     pub descriptor_index: ConstantIndex,
 }
 
-pub struct Utf8Constant(StrBuf);
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Utf8Constant(pub(crate) StrBuf);
+
+impl Hash for Utf8Constant {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        str::hash(&*self.0, state);
+    }
+}
+
+impl Utf8Constant {
+    pub fn from_str(s: &str) -> Self {
+        Utf8Constant(StrBuf::from_str(s))
+    }
+}
+
+impl fmt::Display for Utf8Constant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&*self.0)
+    }
+}
+
+impl Borrow<str> for Utf8Constant {
+    fn borrow(&self) -> &str {
+        &*self.0
+    }
+}
 
 impl Deref for Utf8Constant {
     type Target = str;
 
     fn deref(&self) -> &str {
         &self.0
-    }
-}
-
-impl fmt::Debug for Utf8Constant {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, f)
     }
 }
 
