@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -534,21 +533,7 @@ impl ClassCodeGen {
     }
 
     fn gen_phi_nodes(&mut self, block: &BasicBlock, blocks: &BlockGraph) -> Fallible<()> {
-        let mut phis = BTreeMap::<VarId, Vec<(VarId, u32)>>::new();
-        for incoming_block in blocks.incoming(block.address) {
-            for (i, out_var) in incoming_block.outgoing.stack.iter().enumerate() {
-                let var = &block.incoming.stack[i];
-                phis.entry(var.clone())
-                    .or_default()
-                    .push((out_var.clone(), incoming_block.address));
-            }
-            for (i, out_var) in incoming_block.outgoing.locals.iter() {
-                let var = &block.incoming.locals[i];
-                phis.entry(var.clone())
-                    .or_default()
-                    .push((out_var.clone(), incoming_block.address));
-            }
-        }
+        let phis = blocks.phis(block);
         for (var, bindings) in phis {
             write!(self.file, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
             for (i, (out_var, addr)) in bindings.iter().enumerate() {
