@@ -3,6 +3,7 @@ extern crate jar;
 #[macro_use]
 extern crate failure;
 extern crate indexmap;
+extern crate llvm;
 extern crate petgraph;
 #[macro_use]
 extern crate log;
@@ -50,8 +51,8 @@ struct Compile {
     inputs: Vec<PathBuf>,
     #[structopt(long = "main")]
     main: String,
-    #[structopt(short = "O", default_value = "0")]
-    optimize: u32,
+    #[structopt(short = "O")]
+    optimize: bool,
     #[structopt(parse(from_os_str), long = "save-temp")]
     save_temp: Option<PathBuf>,
 }
@@ -70,7 +71,7 @@ fn compile(c: Compile) -> Fallible<()> {
             .map(|p| p.as_ref())
             .unwrap_or(tempdir.path());
 
-        let driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
+        let mut driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
 
         driver.compile(&c.main, &c.inputs)?;
         driver.link(&c.runtime, &c.output)?;
@@ -83,6 +84,7 @@ fn compile(c: Compile) -> Fallible<()> {
 
 fn main() {
     env_logger::init();
+    llvm::init();
     if let Err(err) = compile(Compile::from_args()) {
         println!("Error: {:?}", err);
         std::process::exit(1);

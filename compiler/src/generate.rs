@@ -1,6 +1,4 @@
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::fmt::Write;
 use std::sync::Arc;
 
 use classfile::attrs::SourceFile;
@@ -24,17 +22,15 @@ use vtable::VTableMap;
 pub(crate) struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
-    target_path: PathBuf,
     target_triple: String,
 }
 
 impl CodeGen {
-    pub fn new(classes: ClassGraph, target_path: PathBuf, target_triple: String) -> Self {
+    pub fn new(classes: ClassGraph, target_triple: String) -> Self {
         let vtables = VTableMap::new(classes.clone());
         CodeGen {
             classes,
             vtables,
-            target_path,
             target_triple,
         }
     }
@@ -44,13 +40,14 @@ impl CodeGen {
             Class::File(class_file) => class_file,
             _ => bail!("can't generate code for array class"),
         };
-        let class_name = class
+        let _class_name = class
             .constant_pool
             .get_utf8(class.get_this_class().name_index)
             .unwrap();
-        let file = File::create(self.target_path.join(format!("{}.ll", mangle(class_name))))?;
+        let _source_file = class.attributes.get::<SourceFile>()?;
+
         Ok(ClassCodeGen {
-            file: BufWriter::new(file),
+            out: String::new(),
             class: class.clone(),
             classes: self.classes.clone(),
             vtables: self.vtables.clone(),
@@ -61,7 +58,7 @@ impl CodeGen {
 }
 
 pub(crate) struct ClassCodeGen {
-    file: BufWriter<File>,
+    out: String,
     class: Arc<ClassFile>,
     classes: ClassGraph,
     vtables: VTableMap,
@@ -70,15 +67,19 @@ pub(crate) struct ClassCodeGen {
 }
 
 impl ClassCodeGen {
+    pub(crate) fn finish(self) -> String {
+        self.out
+    }
+
     pub(crate) fn gen_main(&mut self) -> Fallible<()> {
         let class_name = self
             .class
             .constant_pool
             .get_utf8(self.class.get_this_class().name_index)
             .unwrap();
-        writeln!(self.file, "define i32 @main() {{")?;
+        writeln!(self.out, "define i32 @main() {{")?;
         writeln!(
-            self.file,
+            self.out,
             "  call void @{}(%ref zeroinitializer)",
             mangle_method_name(
                 class_name,
@@ -91,25 +92,25 @@ impl ClassCodeGen {
                 }))]
             )
         )?;
-        writeln!(self.file, "  ret i32 0")?;
-        writeln!(self.file, "}}")?;
+        writeln!(self.out, "  ret i32 0")?;
+        writeln!(self.out, "}}")?;
         Ok(())
     }
 
     pub(crate) fn gen_vtable_type(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
-        writeln!(self.file, "%vtable.{} = type {{", mangle(class_name))?;
+        writeln!(self.out, "%vtable.{} = type {{", mangle(class_name))?;
         for (idx, (key, _)) in vtable.iter().enumerate() {
             let ftyp = tlt_function_type(&key.method_descriptor);
-            write!(self.file, "  {} *", ftyp)?;
+            write!(self.out, "  {} *", ftyp)?;
             if idx < vtable.len() - 1 {
-                write!(self.file, ",")?;
+                write!(self.out, ",")?;
             } else {
-                write!(self.file, "")?;
+                write!(self.out, "")?;
             }
-            writeln!(self.file, " ; {}", key.method_name)?;
+            writeln!(self.out, " ; {}", key.method_name)?;
         }
-        writeln!(self.file, "}}")?;
+        writeln!(self.out, "}}")?;
 
         Ok(())
     }
@@ -119,13 +120,13 @@ impl ClassCodeGen {
         let mangled_class_name = mangle(class_name);
 
         writeln!(
-            self.file,
+            self.out,
             "@vtable.{} = constant %vtable.{} {{",
             mangled_class_name, mangled_class_name
         )?;
         for (idx, (key, target)) in vtable.iter().enumerate() {
             write!(
-                self.file,
+                self.out,
                 "  {} * @{}",
                 tlt_function_type(&key.method_descriptor),
                 mangle_method_name(
@@ -136,12 +137,12 @@ impl ClassCodeGen {
                 )
             )?;
             if idx < vtable.len() - 1 {
-                writeln!(self.file, ",")?;
+                writeln!(self.out, ",")?;
             } else {
-                writeln!(self.file, "")?;
+                writeln!(self.out, "")?;
             }
         }
-        writeln!(self.file, "}}")?;
+        writeln!(self.out, "}}")?;
 
         Ok(())
     }
@@ -154,7 +155,7 @@ impl ClassCodeGen {
                 continue;
             }
             write!(
-                self.file,
+                self.out,
                 "declare {return_type} @{mangled_name}(",
                 return_type = tlt_return_type(&key.method_descriptor.ret),
                 mangled_name = mangle_method_name(
@@ -164,11 +165,11 @@ impl ClassCodeGen {
                     &key.method_descriptor.params
                 )
             )?;
-            write!(self.file, "%ref")?;
+            write!(self.out, "%ref")?;
             for ParameterDescriptor::Field(field) in key.method_descriptor.params.iter() {
-                write!(self.file, ", {}", tlt_field_type(field))?;
+                write!(self.out, ", {}", tlt_field_type(field))?;
             }
-            writeln!(self.file, ")")?;
+            writeln!(self.out, ")")?;
         }
 
         Ok(())
@@ -179,7 +180,7 @@ impl ClassCodeGen {
         let manged_class_name = mangle(class_name);
 
         writeln!(
-            self.file,
+            self.out,
             "@vtable.{class} = external global %vtable.{class}",
             class = manged_class_name
         )?;
@@ -192,7 +193,7 @@ impl ClassCodeGen {
             }
 
             write!(
-                self.file,
+                self.out,
                 "declare {return_type} @{mangled_name}(",
                 return_type = tlt_return_type(&method.descriptor.ret),
                 mangled_name = mangle_method_name(
@@ -202,23 +203,23 @@ impl ClassCodeGen {
                     &method.descriptor.params
                 )
             )?;
-            write!(self.file, "%ref")?;
+            write!(self.out, "%ref")?;
             for ParameterDescriptor::Field(field) in method.descriptor.params.iter() {
-                write!(self.file, ", {}", tlt_field_type(field))?;
+                write!(self.out, ", {}", tlt_field_type(field))?;
             }
-            writeln!(self.file, ")")?;
+            writeln!(self.out, ")")?;
         }
 
         for field in class.fields.iter() {
             let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
             writeln!(
-                self.file,
+                self.out,
                 "declare {field_type} @{mangled_name}__get(%ref)",
                 field_type = tlt_field_type(&field.descriptor),
                 mangled_name = mangle_field_name(class_name, field_name)
             )?;
             writeln!(
-                self.file,
+                self.out,
                 "declare void @{mangled_name}__set(%ref, {field_type})",
                 field_type = tlt_field_type(&field.descriptor),
                 mangled_name = mangle_field_name(class_name, field_name)
@@ -232,32 +233,32 @@ impl ClassCodeGen {
         let filename = self.class.attributes.get::<SourceFile>()?;
         let target_datalayout = target_datalayout(&self.target_triple)?;
 
-        writeln!(self.file, "; ModuleID = '{}'", self.class.get_name())?;
-        writeln!(self.file, "source_filename = \"{}\"", filename.as_str())?;
-        writeln!(self.file, "target datalayout = \"{}\"", target_datalayout)?;
-        writeln!(self.file, "target triple = \"{}\"", self.target_triple)?;
-        writeln!(self.file, "")?;
+        writeln!(self.out, "; ModuleID = '{}'", self.class.get_name())?;
+        writeln!(self.out, "source_filename = \"{}\"", filename.as_str())?;
+        writeln!(self.out, "target datalayout = \"{}\"", target_datalayout)?;
+        writeln!(self.out, "target triple = \"{}\"", self.target_triple)?;
+        writeln!(self.out, "")?;
 
-        writeln!(self.file, "%ref = type {{ i8*, i8* }}")?;
+        writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
 
-        writeln!(self.file, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
+        writeln!(self.out, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
 
         for index in self.class.constant_pool.indices() {
             match self.class.constant_pool.get_info(index).unwrap() {
                 Constant::String(string_const) => {
                     let utf8_index = string_const.string_index;
-                    write!(self.file, "\n")?;
+                    write!(self.out, "\n")?;
                     let utf8 = self.class.constant_pool.get_utf8(utf8_index).unwrap();
                     write!(
-                        self.file,
+                        self.out,
                         "@.str{} = internal constant [{} x i8] [",
                         utf8_index.as_u16(),
                         utf8.len() + 1
                     )?;
                     for byte in utf8.as_bytes() {
-                        write!(self.file, " i8 {},", byte)?;
+                        write!(self.out, " i8 {},", byte)?;
                     }
-                    writeln!(self.file, " i8 0 ]")?;
+                    writeln!(self.out, " i8 0 ]")?;
                 }
                 _ => {}
             }
@@ -276,7 +277,7 @@ impl ClassCodeGen {
             .unwrap();
         let method_name = consts.get_utf8(method.name_index).unwrap();
         write!(
-            self.file,
+            self.out,
             "\ndefine {return_type} @{mangled_name}(",
             return_type = tlt_return_type(&method.descriptor.ret),
             mangled_name = mangle_method_name(
@@ -288,15 +289,15 @@ impl ClassCodeGen {
         )?;
         for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
             if i > 0 {
-                write!(self.file, ", ")?;
+                write!(self.out, ", ")?;
             }
-            write!(self.file, "{} %v{}", tlt_type(&var.0), var.1)?;
+            write!(self.out, "{} %v{}", tlt_type(&var.0), var.1)?;
         }
-        writeln!(self.file, ") {{")?;
+        writeln!(self.out, ") {{")?;
         for block in blocks.blocks() {
             self.gen_block(block, blocks, consts)?;
         }
-        writeln!(self.file, "}}")?;
+        writeln!(self.out, "}}")?;
         Ok(())
     }
 
@@ -306,14 +307,14 @@ impl ClassCodeGen {
         blocks: &BlockGraph,
         consts: &ConstantPool,
     ) -> Fallible<()> {
-        writeln!(self.file, "B{}:", block.address)?;
+        writeln!(self.out, "B{}:", block.address)?;
         self.gen_phi_nodes(block, blocks)?;
         for stmt in block.statements.iter() {
             self.gen_statement(stmt, consts)?;
         }
         match &block.branch_stub {
-            BranchStub::Goto(addr) => writeln!(self.file, "  br label %B{}", addr)?,
-            BranchStub::Return(None) => writeln!(self.file, "  ret void")?,
+            BranchStub::Goto(addr) => writeln!(self.out, "  br label %B{}", addr)?,
+            BranchStub::Return(None) => writeln!(self.out, "  ret void")?,
             BranchStub::IfICmp(comp, var1, var2_opt, if_addr, else_addr) => {
                 let tmpid = self.var_id_gen.gen();
                 let code = match comp {
@@ -322,19 +323,19 @@ impl ClassCodeGen {
                 };
                 if let Some(var2) = var2_opt {
                     writeln!(
-                        self.file,
+                        self.out,
                         "  %tmp{} = icmp {} i32 %v{}, %v{}",
                         tmpid, code, var1.1, var2.1
                     )?;
                 } else {
                     writeln!(
-                        self.file,
+                        self.out,
                         "  %tmp{} = icmp {} i32 0, %v{}",
                         tmpid, code, var1.1
                     )?;
                 }
                 writeln!(
-                    self.file,
+                    self.out,
                     "  br i1 %tmp{}, label %B{}, label %B{}",
                     tmpid, if_addr, else_addr
                 )?;
@@ -358,7 +359,7 @@ impl ClassCodeGen {
         match expr {
             Expr::ConstInt(i) => {
                 if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.file, "  %v{} = and i32 {}, {}", dest_var.1, i, i)?;
+                    writeln!(self.out, "  %v{} = and i32 {}, {}", dest_var.1, i, i)?;
                 }
             }
             Expr::ConstString(index) => self.gen_load_string(*index, consts, dest)?,
@@ -366,12 +367,12 @@ impl ClassCodeGen {
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
             Expr::IInc(var, i) => {
                 if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.file, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
+                    writeln!(self.out, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
                 }
             }
             Expr::New(class_name) => {
                 if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.file, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%vtable.{class}* @vtable.{class} to i8*), 1", dest_var.1, class = mangle(class_name))?;
+                    writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%vtable.{class}* @vtable.{class} to i8*), 1", dest_var.1, class = mangle(class_name))?;
                 }
             }
             _ => bail!("unknown expression {:?}", expr),
@@ -388,7 +389,7 @@ impl ClassCodeGen {
         let len = consts.get_utf8(index).unwrap().len();
         if let Dest::Assign(dest_var) = dest {
             writeln!(
-                self.file,
+                self.out,
                 "  %v{} = call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
                 dest_var.1,
                 len,
@@ -425,17 +426,17 @@ impl ClassCodeGen {
                 let vtable = self.vtables.get(method_class_name)?;
                 let (offset, _) = vtable.get(method_name, &method_ref.descriptor).unwrap();
 
-                writeln!(self.file, "  ; prepare virtual dispatch")?;
+                writeln!(self.out, "  ; prepare virtual dispatch")?;
                 let tmp_vtblraw = self.var_id_gen.gen();
                 writeln!(
-                    self.file,
+                    self.out,
                     "  %t{vtblraw} = extractvalue %ref %v{}, 1",
                     var.1,
                     vtblraw = tmp_vtblraw
                 )?;
                 let tmp_vtbl = self.var_id_gen.gen();
                 writeln!(
-                    self.file,
+                    self.out,
                     "  %t{vtbl} = bitcast i8* %t{vtblraw} to %vtable.{class}*",
                     class = mangled_method_class_name,
                     vtbl = tmp_vtbl,
@@ -443,7 +444,7 @@ impl ClassCodeGen {
                 )?;
                 let tmp_fptrptr = self.var_id_gen.gen();
                 writeln!(
-                    self.file,
+                    self.out,
                     "  %t{fptrptr} = getelementptr %vtable.{class}, %vtable.{class}* %t{vtbl}, i64 0, i32 {offset}",
                     offset = offset,
                     class = mangled_method_class_name,
@@ -452,13 +453,13 @@ impl ClassCodeGen {
                 )?;
                 let tmp_fptr = self.var_id_gen.gen();
                 writeln!(
-                    self.file,
+                    self.out,
                     "  %t{fptr} = load {ftyp}*, {ftyp}** %t{fptrptr}",
                     fptr = tmp_fptr,
                     fptrptr = tmp_fptrptr,
                     ftyp = tlt_function_type(&method_ref.descriptor)
                 )?;
-                writeln!(self.file, "  ; invoke {}", method_name)?;
+                writeln!(self.out, "  ; invoke {}", method_name)?;
 
                 format!("%t{}", tmp_fptr)
             }
@@ -474,13 +475,13 @@ impl ClassCodeGen {
         };
 
         if let Dest::Assign(dest_var) = dest {
-            write!(self.file, "  %v{} = ", dest_var.1)?;
+            write!(self.out, "  %v{} = ", dest_var.1)?;
         } else {
-            write!(self.file, "  ")?;
+            write!(self.out, "  ")?;
         }
 
         write!(
-            self.file,
+            self.out,
             "call {return_type} {fptr}(",
             fptr = fptr,
             return_type = tlt_return_type(&method_ref.descriptor.ret)
@@ -500,13 +501,13 @@ impl ClassCodeGen {
 
         for (idx, arg) in args.iter().enumerate() {
             if idx > 0 {
-                write!(self.file, ", {}", arg)?;
+                write!(self.out, ", {}", arg)?;
             } else {
-                write!(self.file, "{}", arg)?;
+                write!(self.out, "{}", arg)?;
             }
         }
 
-        writeln!(self.file, ")")?;
+        writeln!(self.out, ")")?;
         Ok(())
     }
 
@@ -522,7 +523,7 @@ impl ClassCodeGen {
         let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
         if let Dest::Assign(dest_var) = dest {
             writeln!(
-                self.file,
+                self.out,
                 "  %v{} = call {field_type} @{mangled_name}__get(%ref zeroinitializer)",
                 dest_var.1,
                 field_type = tlt_field_type(&field_ref.descriptor),
@@ -535,14 +536,14 @@ impl ClassCodeGen {
     fn gen_phi_nodes(&mut self, block: &BasicBlock, blocks: &BlockGraph) -> Fallible<()> {
         let phis = blocks.phis(block);
         for (var, bindings) in phis {
-            write!(self.file, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
+            write!(self.out, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
             for (i, (out_var, addr)) in bindings.iter().enumerate() {
                 if i > 0 {
-                    write!(self.file, ", ")?;
+                    write!(self.out, ", ")?;
                 }
-                write!(self.file, "[ %v{}, %B{} ]", out_var.1, addr)?;
+                write!(self.out, "[ %v{}, %B{} ]", out_var.1, addr)?;
             }
-            writeln!(self.file, "")?;
+            writeln!(self.out, "")?;
         }
         Ok(())
     }

@@ -18,5 +18,8 @@ path = "../crates/classfile"
 [dependencies.jar]
 path = "../crates/jar"
 
+[dependencies.llvm]
+path = "../crates/llvm"
+
 [dev-dependencies]
 assert_cli = "0.6.3"

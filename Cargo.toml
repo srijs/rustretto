@@ -2,6 +2,7 @@
 members = [
   "crates/classfile",
   "crates/jar",
+  "crates/llvm",
 
   "tools/javapv",
 

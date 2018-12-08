@@ -21,7 +21,7 @@ impl Compiler {
         Self { classes, codegen }
     }
 
-    pub fn compile(&mut self, class_name: &Utf8Constant, main: bool) -> Fallible<()> {
+    pub fn compile(&mut self, class_name: &Utf8Constant, main: bool) -> Fallible<String> {
         let cf = match self.classes.get(&class_name)? {
             Class::File(class_file) => class_file,
             class => bail!("unexpected class type {:?}", class),
@@ -84,6 +84,6 @@ impl Compiler {
             classgen.gen_main()?;
         }
 
-        Ok(())
+        Ok(classgen.finish())
     }
 }

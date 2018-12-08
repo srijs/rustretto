@@ -1,0 +1,8 @@
+[package]
+name = "llvm"
+version = "0.1.0"
+authors = ["Sam Rijs <srijs@airpost.net>"]
+
+[dependencies]
+libc = "0.2.43"
+llvm-sys = "70.0.0"
