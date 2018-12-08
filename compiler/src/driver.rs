@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -14,19 +15,17 @@ use loader::BootstrapClassLoader;
 
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,
-    temppath: PathBuf,
     target: String,
     optimize: bool,
     modules: HashMap<String, String>,
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target: String, optimize: bool, temppath: &Path) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target: String, optimize: bool) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
         let modules = HashMap::new();
         Ok(Driver {
             loader,
-            temppath: temppath.into(),
             target,
             optimize,
             modules,
@@ -57,6 +56,15 @@ impl Driver {
         Ok(())
     }
 
+    pub fn dump(&self, path: &Path) -> Fallible<()> {
+        for (name, module) in self.modules.iter() {
+            let filename = format!("{}.ll", name.replace("/", "_"));
+            let mut file = fs::File::create(path.join(filename))?;
+            file.write_all(module.as_bytes())?;
+        }
+        Ok(())
+    }
+
     pub fn link(&self, runtime_path: &Path, output_path: &Path) -> Fallible<()> {
         let mut main = llvm::Module::new("main");
 
@@ -81,11 +89,11 @@ impl Driver {
         let machine = machine_builder.build();
 
         pass_manager.run(&mut main);
-        let main_out = self.temppath.join("main.o");
-        machine.emit_to_file(&main, llvm::codegen::FileType::Object, &main_out)?;
+        let main_out = tempfile::NamedTempFile::new()?;
+        machine.emit_to_file(&main, llvm::codegen::FileType::Object, main_out.path())?;
 
         let mut cmd = Command::new("ld");
-        cmd.arg(main_out);
+        cmd.arg(main_out.path());
         cmd.arg(runtime_path);
         cmd.arg("-lc");
         cmd.arg("-o");

@@ -18,7 +18,6 @@ use std::path::PathBuf;
 
 use failure::Fallible;
 use structopt::StructOpt;
-use tempfile::TempDir;
 
 mod blocks;
 mod classes;
@@ -62,22 +61,15 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let tempdir = TempDir::new()?;
+    let mut driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize)?;
 
-    {
-        let temppath = c
-            .save_temp
-            .as_ref()
-            .map(|p| p.as_ref())
-            .unwrap_or(tempdir.path());
+    driver.compile(&c.main, &c.inputs)?;
 
-        let mut driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize, temppath)?;
-
-        driver.compile(&c.main, &c.inputs)?;
-        driver.link(&c.runtime, &c.output)?;
+    if let Some(ref temppath) = c.save_temp {
+        driver.dump(temppath)?;
     }
 
-    tempdir.close()?;
+    driver.link(&c.runtime, &c.output)?;
 
     Ok(())
 }
