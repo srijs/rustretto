@@ -31,11 +31,10 @@ impl Module {
     pub fn parse_ir(bytes: &[u8]) -> Result<Self, Error> {
         unsafe {
             let ctx = LLVMGetGlobalContext();
-            let buf = LLVMCreateMemoryBufferWithMemoryRange(
+            let buf = LLVMCreateMemoryBufferWithMemoryRangeCopy(
                 bytes.as_ptr() as *const i8,
                 bytes.len(),
                 ptr::null(),
-                0,
             );
             let mut llref = LLVMModuleCreateWithName(ptr::null());
             let mut msg_ptr = ptr::null_mut();
