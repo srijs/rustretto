@@ -13,6 +13,7 @@ use failure::Fallible;
 use blocks::BlockGraph;
 use classes::ClassGraph;
 use loader::Class;
+use target::Target;
 use translate::{
     BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId,
 };
@@ -22,16 +23,16 @@ use vtable::VTableMap;
 pub(crate) struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
-    target_triple: String,
+    target: Target,
 }
 
 impl CodeGen {
-    pub fn new(classes: ClassGraph, target_triple: String) -> Self {
+    pub fn new(classes: ClassGraph, target: Target) -> Self {
         let vtables = VTableMap::new(classes.clone());
         CodeGen {
             classes,
             vtables,
-            target_triple,
+            target,
         }
     }
 
@@ -51,7 +52,7 @@ impl CodeGen {
             class: class.clone(),
             classes: self.classes.clone(),
             vtables: self.vtables.clone(),
-            target_triple: self.target_triple.clone(),
+            target: self.target.clone(),
             var_id_gen: TmpVarIdGen::new(),
         })
     }
@@ -62,7 +63,7 @@ pub(crate) struct ClassCodeGen {
     class: Arc<ClassFile>,
     classes: ClassGraph,
     vtables: VTableMap,
-    target_triple: String,
+    target: Target,
     var_id_gen: TmpVarIdGen,
 }
 
@@ -231,12 +232,12 @@ impl ClassCodeGen {
 
     pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
         let filename = self.class.attributes.get::<SourceFile>()?;
-        let target_datalayout = target_datalayout(&self.target_triple)?;
+        let target_datalayout = target_datalayout(&self.target)?;
 
         writeln!(self.out, "; ModuleID = '{}'", self.class.get_name())?;
         writeln!(self.out, "source_filename = \"{}\"", filename.as_str())?;
         writeln!(self.out, "target datalayout = \"{}\"", target_datalayout)?;
-        writeln!(self.out, "target triple = \"{}\"", self.target_triple)?;
+        writeln!(self.out, "target triple = \"{}\"", self.target.triple())?;
         writeln!(self.out, "")?;
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
@@ -570,8 +571,8 @@ impl TmpVarIdGen {
     }
 }
 
-fn target_datalayout(target_triple: &str) -> Fallible<&'static str> {
-    match target_triple {
+fn target_datalayout(target: &Target) -> Fallible<&'static str> {
+    match target.triple() {
         "x86_64-apple-darwin" => Ok("e-m:o-i64:64-f80:128-n8:16:32:64-S128"),
         _ => bail!("could not determine data layout: unknown target triple"),
     }

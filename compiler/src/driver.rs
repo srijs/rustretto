@@ -12,17 +12,19 @@ use classes::ClassGraph;
 use compile::Compiler;
 use generate::CodeGen;
 use loader::BootstrapClassLoader;
+use target::Target;
 
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,
-    target: String,
+    target: Target,
     optimize: bool,
     modules: HashMap<String, String>,
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target: String, optimize: bool) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target_triple: &str, optimize: bool) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
+        let target = Target::new(target_triple);
         let modules = HashMap::new();
         Ok(Driver {
             loader,
@@ -92,6 +94,12 @@ impl Driver {
         cmd.arg("-lc");
         cmd.arg("-o");
         cmd.arg(output_path);
+
+        cmd.args(&["-arch", self.target.arch()]);
+        match &*self.target.os() {
+            "macos" => cmd.args(&["-macosx_version_min", self.target.os_version_min()]),
+            _ => unimplemented!(),
+        };
 
         let exit = cmd.status()?;
 

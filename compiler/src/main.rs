@@ -27,6 +27,7 @@ mod driver;
 mod frame;
 mod generate;
 mod loader;
+mod target;
 mod translate;
 mod types;
 mod vtable;
@@ -61,7 +62,7 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let mut driver = Driver::new(home, "x86_64-apple-darwin".to_owned(), c.optimize)?;
+    let mut driver = Driver::new(home, "x86_64-apple-darwin", c.optimize)?;
 
     driver.compile(&c.main, &c.inputs)?;
 
