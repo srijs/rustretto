@@ -2,11 +2,13 @@ use std::ffi::CStr;
 use std::ptr;
 
 use libc::c_char;
+use llvm_sys::bit_writer::*;
 use llvm_sys::core::*;
 use llvm_sys::ir_reader::*;
 use llvm_sys::linker::*;
 use llvm_sys::prelude::*;
 
+use buffer::MemoryBuffer;
 use error::Error;
 
 pub struct Module {
@@ -74,6 +76,14 @@ impl Module {
                 })
             }
         }
+    }
+
+    pub fn to_bitcode(&self) -> MemoryBuffer {
+        let llref;
+        unsafe {
+            llref = LLVMWriteBitcodeToMemoryBuffer(self.llref);
+        }
+        MemoryBuffer { llref }
     }
 }
 

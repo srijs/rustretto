@@ -89,8 +89,10 @@ impl Driver {
         let machine = machine_builder.build();
 
         pass_manager.run(&mut main);
-        let main_out = tempfile::NamedTempFile::new()?;
-        machine.emit_to_file(&main, llvm::codegen::FileType::Object, main_out.path())?;
+        let main_obj = main.to_bitcode();
+        let mut main_out = tempfile::NamedTempFile::new()?;
+        main_out.write_all(&main_obj)?;
+        main_out.flush()?;
 
         let mut cmd = Command::new("ld");
         cmd.arg(main_out.path());
