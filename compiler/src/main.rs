@@ -78,7 +78,8 @@ fn main() {
     env_logger::init();
     llvm::init();
     if let Err(err) = compile(Compile::from_args()) {
-        println!("Error: {:?}", err);
+        println!("Error: {}", err);
+        println!("{}", err.backtrace());
         std::process::exit(1);
     }
 }

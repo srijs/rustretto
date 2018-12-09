@@ -80,21 +80,13 @@ impl Driver {
         }
         let pass_manager = pass_manager_builder.build();
 
-        let mut machine_builder = llvm::codegen::TargetMachineBuilder::host();
-        if self.optimize {
-            machine_builder.optimize(llvm::codegen::OptLevel::Aggressive);
-        } else {
-            machine_builder.optimize(llvm::codegen::OptLevel::None);
-        }
-        let machine = machine_builder.build();
-
         pass_manager.run(&mut main);
         let main_obj = main.to_bitcode();
         let mut main_out = tempfile::NamedTempFile::new()?;
         main_out.write_all(&main_obj)?;
         main_out.flush()?;
 
-        let mut cmd = Command::new("ld");
+        let mut cmd = Command::new("/usr/bin/ld");
         cmd.arg(main_out.path());
         cmd.arg(runtime_path);
         cmd.arg("-lc");
