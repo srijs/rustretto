@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use byteorder::{BigEndian, ReadBytesExt};
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 use crate::ByteBuf;
 

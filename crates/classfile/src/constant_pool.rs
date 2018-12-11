@@ -6,7 +6,7 @@ use std::ops::{Deref, Index};
 use std::sync::Arc;
 
 use byteorder::{BigEndian, ReadBytesExt};
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 use super::descriptors::{FieldType, MethodDescriptor};
 use super::{FieldRef, MethodRef};

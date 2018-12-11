@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 use super::super::constant_pool::Utf8Constant;
 use super::super::{ConstantIndex, ConstantPool};

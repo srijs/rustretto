@@ -1,19 +1,8 @@
-#[macro_use]
-extern crate bitflags;
-extern crate byteorder;
-extern crate bytes;
-extern crate cesu8;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate log;
-extern crate string;
-
 use std::io::Read;
 
 use byteorder::{BigEndian, NativeEndian, ReadBytesExt};
 use bytes::Bytes;
-use failure::Fallible;
+use failure::{ensure, Fallible};
 
 mod access_flags;
 mod buffer;

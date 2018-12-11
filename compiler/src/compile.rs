@@ -1,8 +1,7 @@
-use failure::Fallible;
-
 use classfile::attrs::Code;
 use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::ParameterDescriptor;
+use failure::{bail, Fallible};
 
 use crate::classes::ClassGraph;
 use crate::frame::StackAndLocals;

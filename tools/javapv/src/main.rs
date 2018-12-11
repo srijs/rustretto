@@ -1,10 +1,3 @@
-extern crate chrono;
-extern crate classfile;
-extern crate failure;
-extern crate md5;
-#[macro_use]
-extern crate structopt;
-
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};

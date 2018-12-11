@@ -1,22 +1,8 @@
-extern crate classfile;
-extern crate jar;
-#[macro_use]
-extern crate failure;
-extern crate indexmap;
-extern crate llvm;
-extern crate petgraph;
-#[macro_use]
-extern crate log;
-extern crate env_logger;
-#[macro_use]
-extern crate structopt;
-extern crate tempfile;
-
 use std::alloc::System;
 use std::env;
 use std::path::PathBuf;
 
-use failure::Fallible;
+use failure::{format_err, Fallible};
 use structopt::StructOpt;
 
 mod blocks;

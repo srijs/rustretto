@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use classfile::ClassFile;
-use failure::Fallible;
+use failure::{bail, Fallible};
 use llvm;
 
 use crate::classes::ClassGraph;

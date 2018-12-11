@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 use super::{ConstantIndex, ConstantPool};
 use crate::{ByteBuf, StrBuf};

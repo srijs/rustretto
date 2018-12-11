@@ -1,6 +1,6 @@
 use std::io::BufRead;
 
-use failure::Fallible;
+use failure::{bail, ensure, Fallible};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MethodDescriptor {

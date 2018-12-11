@@ -1,5 +1,3 @@
-extern crate libc;
-
 use std::ptr;
 
 use libc::c_void;

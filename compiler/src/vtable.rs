@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use classfile::constant_pool::Utf8Constant;
 use classfile::{MethodAccessFlags, MethodDescriptor};
-use failure::Fallible;
+use failure::{bail, Fallible};
 use indexmap::{Equivalent, IndexMap};
 
 use crate::classes::ClassGraph;

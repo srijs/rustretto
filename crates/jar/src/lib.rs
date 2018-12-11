@@ -1,9 +1,5 @@
 pub extern crate classfile;
 
-extern crate bytes;
-extern crate failure;
-extern crate zip;
-
 use std::fs;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;

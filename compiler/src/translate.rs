@@ -4,7 +4,7 @@ use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::ReturnTypeDescriptor;
 use classfile::instructions::{Disassembler, Instr};
 use classfile::{ConstantIndex, ConstantPool};
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 use crate::blocks::BlockGraph;
 use crate::disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};

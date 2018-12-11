@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use classfile::descriptors::{BaseType, FieldType};
 use classfile::ClassFile;
-use failure::Fallible;
+use failure::{format_err, Fallible};
 use jar::{ClassEntry, JarReader};
+use log::debug;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Class {
@@ -49,7 +50,7 @@ impl BootstrapClassLoader {
 
     fn load_entry_from_disk(&self, name: &str) -> Fallible<ClassEntry> {
         let mut readers = self.readers.lock().unwrap();
-        for mut reader in readers.iter_mut() {
+        for reader in readers.iter_mut() {
             if let Ok(class_entry) = reader.get_class_entry(name) {
                 return Ok(class_entry);
             }

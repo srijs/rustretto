@@ -1,9 +1,8 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use failure::Fallible;
-
 use classfile::instructions::{Disassembler, Instr};
+use failure::{bail, Fallible};
 
 pub struct InstructionWithRange {
     pub range: Range<u32>,

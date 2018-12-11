@@ -1,3 +1,5 @@
+use bitflags::bitflags;
+
 bitflags! {
     pub struct ClassAccessFlags: u16 {
         const PUBLIC = 0x0001;

@@ -8,7 +8,7 @@ use classfile::descriptors::{
     ReturnTypeDescriptor,
 };
 use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
-use failure::Fallible;
+use failure::{bail, Fallible};
 
 use crate::blocks::BlockGraph;
 use crate::classes::ClassGraph;
