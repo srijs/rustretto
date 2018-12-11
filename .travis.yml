@@ -1,0 +1,14 @@
+language: nix
+
+cache:
+  directories:
+    - $HOME/.cargo
+    - $TRAVIS_BUILD_DIR/target
+
+before_script:
+  # install rust -- replace this once nixpkgs updates `rustc` to 1.31.0
+  - curl https://sh.rustup.rs -sSf | sh -s -- -y
+  - source $HOME/.cargo/env
+
+script:
+  - nix-shell --run "cargo check"
