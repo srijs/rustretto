@@ -6,9 +6,9 @@ mod error;
 mod message;
 mod module;
 
-pub use buffer::MemoryBuffer;
-pub use error::Error;
-pub use module::Module;
+pub use crate::buffer::MemoryBuffer;
+pub use crate::error::Error;
+pub use crate::module::Module;
 pub mod codegen;
 pub mod transform;
 

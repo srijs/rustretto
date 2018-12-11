@@ -8,11 +8,11 @@ use classfile::ClassFile;
 use failure::Fallible;
 use llvm;
 
-use classes::ClassGraph;
-use compile::Compiler;
-use generate::CodeGen;
-use loader::BootstrapClassLoader;
-use target::Target;
+use crate::classes::ClassGraph;
+use crate::compile::Compiler;
+use crate::generate::CodeGen;
+use crate::loader::BootstrapClassLoader;
+use crate::target::Target;
 
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,

@@ -2,7 +2,7 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::transforms::pass_manager_builder::*;
 
-use module::Module;
+use crate::module::Module;
 
 pub enum OptLevel {
     O0,

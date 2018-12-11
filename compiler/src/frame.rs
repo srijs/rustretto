@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use translate::{VarId, VarIdGen};
+use crate::translate::{VarId, VarIdGen};
 
 #[derive(Clone, Debug)]
 pub(crate) struct StackAndLocals {

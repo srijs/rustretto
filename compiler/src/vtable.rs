@@ -7,8 +7,8 @@ use classfile::{MethodAccessFlags, MethodDescriptor};
 use failure::Fallible;
 use indexmap::{Equivalent, IndexMap};
 
-use classes::ClassGraph;
-use loader::Class;
+use crate::classes::ClassGraph;
+use crate::loader::Class;
 
 /*
 

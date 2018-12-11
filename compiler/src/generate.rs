@@ -10,15 +10,15 @@ use classfile::descriptors::{
 use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
 use failure::Fallible;
 
-use blocks::BlockGraph;
-use classes::ClassGraph;
-use loader::Class;
-use target::Target;
-use translate::{
+use crate::blocks::BlockGraph;
+use crate::classes::ClassGraph;
+use crate::loader::Class;
+use crate::target::Target;
+use crate::translate::{
     BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId,
 };
-use types::Type;
-use vtable::VTableMap;
+use crate::types::Type;
+use crate::vtable::VTableMap;
 
 pub(crate) struct CodeGen {
     classes: ClassGraph,

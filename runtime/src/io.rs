@@ -8,5 +8,5 @@ pub(crate) struct VTablePrintStream {
 
 pub(crate) static VTABLE_PRINTSTREAM: &VTablePrintStream = &VTablePrintStream {
     padding: [0; 40],
-    println_string: ::stubs::_Jm_java_io_PrintStream_println__Z__Ljava_lang_String_2,
+    println_string: crate::stubs::_Jm_java_io_PrintStream_println__Z__Ljava_lang_String_2,
 };

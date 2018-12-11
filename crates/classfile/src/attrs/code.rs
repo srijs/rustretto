@@ -4,7 +4,7 @@ use failure::Fallible;
 use super::super::instructions::Disassembler;
 use super::super::{ConstantIndex, ConstantPool};
 use super::{private, Attribute, Attributes, RawAttribute};
-use ByteBuf;
+use crate::ByteBuf;
 
 #[derive(Debug)]
 pub struct Code {

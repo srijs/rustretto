@@ -2,7 +2,7 @@
 name = "jar"
 version = "0.1.0"
 authors = ["Sam Rijs <srijs@airpost.net>"]
-workspace = "../.."
+edition = "2018"
 
 [dependencies]
 bytes = "0.4.10"

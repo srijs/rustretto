@@ -4,7 +4,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableGraph;
 use petgraph::Direction;
 
-use translate::{BasicBlock, BranchStub, VarId};
+use crate::translate::{BasicBlock, BranchStub, VarId};
 
 pub(crate) struct BlockGraph {
     inner: StableGraph<BasicBlock, ()>,

@@ -2,6 +2,7 @@
 name = "llvm"
 version = "0.1.0"
 authors = ["Sam Rijs <srijs@airpost.net>"]
+edition = "2018"
 
 [dependencies]
 libc = "0.2.43"

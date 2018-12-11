@@ -26,7 +26,7 @@ pub mod descriptors;
 pub use self::descriptors::{FieldType, MethodDescriptor};
 pub mod instructions;
 
-use buffer::{ByteBuf, StrBuf};
+use crate::buffer::{ByteBuf, StrBuf};
 
 #[derive(Debug)]
 pub struct Version {

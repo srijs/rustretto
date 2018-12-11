@@ -6,7 +6,7 @@ use failure::Fallible;
 use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableGraph;
 
-use loader::{BootstrapClassLoader, Class, ClassLoader};
+use crate::loader::{BootstrapClassLoader, Class, ClassLoader};
 
 #[derive(Debug)]
 struct Inner {

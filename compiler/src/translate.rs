@@ -6,10 +6,10 @@ use classfile::instructions::{Disassembler, Instr};
 use classfile::{ConstantIndex, ConstantPool};
 use failure::Fallible;
 
-use blocks::BlockGraph;
-use disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
-use frame::StackAndLocals;
-use types::Type;
+use crate::blocks::BlockGraph;
+use crate::disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
+use crate::frame::StackAndLocals;
+use crate::types::Type;
 
 #[derive(Debug)]
 struct BlockId(usize);

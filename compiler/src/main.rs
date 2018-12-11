@@ -32,7 +32,7 @@ mod translate;
 mod types;
 mod vtable;
 
-use driver::Driver;
+use crate::driver::Driver;
 
 #[global_allocator]
 static GLOBAL: System = System;

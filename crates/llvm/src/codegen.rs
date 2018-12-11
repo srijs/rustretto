@@ -5,9 +5,9 @@ use std::ptr;
 use libc::c_char;
 use llvm_sys::target_machine::*;
 
-use error::Error;
-use message::Message;
-use module::Module;
+use crate::error::Error;
+use crate::message::Message;
+use crate::module::Module;
 
 pub enum OptLevel {
     None,

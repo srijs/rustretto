@@ -4,12 +4,12 @@ use classfile::attrs::Code;
 use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::ParameterDescriptor;
 
-use classes::ClassGraph;
-use frame::StackAndLocals;
-use generate::CodeGen;
-use loader::Class;
-use translate::{self, VarIdGen};
-use types::Type;
+use crate::classes::ClassGraph;
+use crate::frame::StackAndLocals;
+use crate::generate::CodeGen;
+use crate::loader::Class;
+use crate::translate::{self, VarIdGen};
+use crate::types::Type;
 
 pub(crate) struct Compiler {
     classes: ClassGraph,

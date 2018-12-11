@@ -2,7 +2,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
 use super::{ConstantIndex, ConstantPool};
-use {ByteBuf, StrBuf};
+use crate::{ByteBuf, StrBuf};
 
 pub mod code;
 pub use self::code::Code;

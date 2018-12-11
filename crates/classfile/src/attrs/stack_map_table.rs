@@ -4,7 +4,7 @@ use failure::Fallible;
 use super::super::constant_pool::Utf8Constant;
 use super::super::{ConstantIndex, ConstantPool};
 use super::{private, Attribute, RawAttribute};
-use ByteBuf;
+use crate::ByteBuf;
 
 #[derive(Debug)]
 pub struct StackMapTable {

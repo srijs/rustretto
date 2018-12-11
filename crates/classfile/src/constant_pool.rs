@@ -10,7 +10,7 @@ use failure::Fallible;
 
 use super::descriptors::{FieldType, MethodDescriptor};
 use super::{FieldRef, MethodRef};
-use buffer::{ByteBuf, StrBuf};
+use crate::buffer::{ByteBuf, StrBuf};
 
 const CONSTANT_CLASS: u8 = 7;
 const CONSTANT_FIELD_REF: u8 = 9;

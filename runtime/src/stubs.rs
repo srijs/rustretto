@@ -63,7 +63,7 @@ pub unsafe extern "C" fn _Jm_java_lang_Object__clinit__Z(_this: Ref) {}
 pub unsafe extern "C" fn _Jf_java_lang_System_out__get(_this: Ref) -> Ref {
     Ref {
         object: ptr::null(),
-        vtable: ::io::VTABLE_PRINTSTREAM as *const ::io::VTablePrintStream as *const c_void,
+        vtable: crate::io::VTABLE_PRINTSTREAM as *const crate::io::VTablePrintStream as *const c_void,
     }
 }
 

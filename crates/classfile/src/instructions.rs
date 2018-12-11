@@ -3,7 +3,7 @@ use std::io::Cursor;
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::Fallible;
 
-use ByteBuf;
+use crate::ByteBuf;
 
 #[derive(Clone, Debug)]
 pub enum Instr {

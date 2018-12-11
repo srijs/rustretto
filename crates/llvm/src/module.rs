@@ -8,8 +8,8 @@ use llvm_sys::ir_reader::*;
 use llvm_sys::linker::*;
 use llvm_sys::prelude::*;
 
-use buffer::MemoryBuffer;
-use error::Error;
+use crate::buffer::MemoryBuffer;
+use crate::error::Error;
 
 pub struct Module {
     pub(crate) llref: LLVMModuleRef,
