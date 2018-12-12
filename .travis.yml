@@ -2,8 +2,15 @@ language: nix
 
 cache:
   directories:
+    - $HOME/nix.store
     - $HOME/.cargo
     - $TRAVIS_BUILD_DIR/target
+
+before_install:
+  # prepare nix for travis caching
+  - sudo mkdir -p /etc/nix
+  - echo "substituters = https://cache.nixos.org/ file://$HOME/nix.store" | sudo tee -a /etc/nix/nix.conf > /dev/null
+  - echo 'require-sigs = false' | sudo tee -a /etc/nix/nix.conf > /dev/null
 
 before_script:
   # install rust -- replace this once nixpkgs updates `rustc` to 1.31.0
@@ -12,3 +19,8 @@ before_script:
 
 script:
   - nix-shell --run "cargo check"
+
+before_cache:
+  # move nix packages into cache
+  - mkdir -p $HOME/nix.store
+  - nix copy --to file://$HOME/nix.store -f default.nix buildInputs
