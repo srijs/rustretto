@@ -10,5 +10,5 @@ stdenv.mkDerivation rec {
     then [ darwin.apple_sdk.frameworks.Security ]
     else [ ];
 
-  buildInputs = platformBuildInputs ++ [ llvm_7 ];
+  buildInputs = platformBuildInputs ++ [ llvm_7 openjdk8 ];
 }

@@ -8,7 +8,6 @@ cache:
 before_script:
   # install rust -- replace this once nixpkgs updates `rustc` to 1.31.0
   - curl https://sh.rustup.rs -sSf | sh -s -- -y
-  - source $HOME/.cargo/env
 
 script:
-  - nix-shell --run "cargo check"
+  - nix-shell --pure --run "source $HOME/.cargo/env && cargo build --release -p runtime && cargo test"

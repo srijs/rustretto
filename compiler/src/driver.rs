@@ -102,10 +102,15 @@ impl Driver {
         main_out.write_all(&main_obj)?;
         main_out.flush()?;
 
-        let mut cmd = Command::new("/usr/bin/cc");
+        let mut cmd = Command::new("cc");
+
+        if cfg!(target_os = "macos") {
+            // hack: clear dyld library path to make `cargo test` work on mac
+            cmd.env_remove("DYLD_LIBRARY_PATH");
+        }
+
         cmd.arg(main_out.path());
         cmd.arg(runtime_path);
-        cmd.arg("-lc");
         cmd.arg("-o");
         cmd.arg(output_path);
 
