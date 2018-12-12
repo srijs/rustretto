@@ -1,32 +1,28 @@
+use platforms::Platform;
+
 #[derive(Clone, Debug)]
-pub struct Target(String);
+pub struct Target(Platform);
 
 impl Target {
-    pub fn new(triple: &str) -> Self {
-        Target(triple.to_owned())
+    pub fn new(platform: Platform) -> Self {
+        Target(platform)
     }
 
     pub fn triple(&self) -> &str {
-        &self.0
+        self.0.target_triple
     }
 
     pub fn arch(&self) -> &str {
-        match &*self.0 {
-            "x86_64-apple-darwin" => "x86_64",
-            _ => unimplemented!(),
-        }
+        self.0.target_arch.as_str()
     }
 
     pub fn os(&self) -> &str {
-        match &*self.0 {
-            "x86_64-apple-darwin" => "macos",
-            _ => unimplemented!(),
-        }
+        self.0.target_os.as_str()
     }
 
     pub fn os_version_min(&self) -> &str {
-        match &*self.0 {
-            "x86_64-apple-darwin" => "10.11",
+        match self.os() {
+            "macos" => "10.11",
             _ => unimplemented!(),
         }
     }

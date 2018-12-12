@@ -9,6 +9,7 @@ use classfile::descriptors::{
 };
 use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
 use failure::{bail, Fallible};
+use llvm::codegen::{TargetDataLayout, TargetMachine};
 
 use crate::blocks::BlockGraph;
 use crate::classes::ClassGraph;
@@ -24,16 +25,22 @@ pub(crate) struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
     target: Target,
+    target_machine: TargetMachine,
+    target_data_layout: TargetDataLayout,
 }
 
 impl CodeGen {
-    pub fn new(classes: ClassGraph, target: Target) -> Self {
+    pub fn new(classes: ClassGraph, target: Target) -> Fallible<Self> {
         let vtables = VTableMap::new(classes.clone());
-        CodeGen {
+        let target_machine = TargetMachine::builder(target.triple()).build()?;
+        let target_data_layout = target_machine.data_layout();
+        Ok(CodeGen {
             classes,
             vtables,
             target,
-        }
+            target_machine,
+            target_data_layout,
+        })
     }
 
     pub fn generate_class(&self, name: &str) -> Fallible<ClassCodeGen> {
@@ -52,8 +59,9 @@ impl CodeGen {
             class: class.clone(),
             classes: self.classes.clone(),
             vtables: self.vtables.clone(),
-            target: self.target.clone(),
             var_id_gen: TmpVarIdGen::new(),
+            target: self.target.clone(),
+            target_data_layout_string_rep: self.target_data_layout.to_string_rep(),
         })
     }
 }
@@ -63,8 +71,9 @@ pub(crate) struct ClassCodeGen {
     class: Arc<ClassFile>,
     classes: ClassGraph,
     vtables: VTableMap,
-    target: Target,
     var_id_gen: TmpVarIdGen,
+    target: Target,
+    target_data_layout_string_rep: llvm::Message,
 }
 
 impl ClassCodeGen {
@@ -232,11 +241,14 @@ impl ClassCodeGen {
 
     pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
         let filename = self.class.attributes.get::<SourceFile>()?;
-        let target_datalayout = target_datalayout(&self.target)?;
 
         writeln!(self.out, "; ModuleID = '{}'", self.class.get_name())?;
         writeln!(self.out, "source_filename = \"{}\"", filename.as_str())?;
-        writeln!(self.out, "target datalayout = \"{}\"", target_datalayout)?;
+        writeln!(
+            self.out,
+            "target datalayout = \"{}\"",
+            self.target_data_layout_string_rep
+        )?;
         writeln!(self.out, "target triple = \"{}\"", self.target.triple())?;
         writeln!(self.out, "")?;
 

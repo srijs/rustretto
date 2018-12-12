@@ -1,13 +1,12 @@
 use std::ffi::CString;
-use std::path::Path;
 use std::ptr;
 
 use libc::c_char;
+use llvm_sys::target::*;
 use llvm_sys::target_machine::*;
 
 use crate::error::Error;
 use crate::message::Message;
-use crate::module::Module;
 
 pub enum OptLevel {
     None,
@@ -17,38 +16,22 @@ pub enum OptLevel {
 }
 
 pub struct TargetMachineBuilder {
-    triple: *const ::libc::c_char,
-    cpu: Message,
-    features: Message,
+    triple: CString,
     level: LLVMCodeGenOptLevel,
     reloc: LLVMRelocMode,
     code_model: LLVMCodeModel,
 }
 
 impl TargetMachineBuilder {
-    pub fn host() -> Self {
-        let triple;
-        let cpu;
-        let features;
-
-        unsafe {
-            triple = LLVMGetDefaultTargetTriple();
-            cpu = Message {
-                inner: LLVMGetHostCPUName(),
-            };
-            features = Message {
-                inner: LLVMGetHostCPUFeatures(),
-            };
-        }
+    pub fn new(triple: &str) -> Self {
+        let triple_cstring = CString::new(triple).unwrap();
 
         let level = LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault;
         let reloc = LLVMRelocMode::LLVMRelocDefault;
         let code_model = LLVMCodeModel::LLVMCodeModelDefault;
 
         TargetMachineBuilder {
-            triple,
-            cpu,
-            features,
+            triple: triple_cstring,
             level,
             reloc,
             code_model,
@@ -64,27 +47,30 @@ impl TargetMachineBuilder {
         }
     }
 
-    pub fn build(self) -> TargetMachine {
+    pub fn build(self) -> Result<TargetMachine, Error> {
         let llref;
         unsafe {
             let mut target = ptr::null_mut();
             let mut msg_ptr = ptr::null_mut();
-            LLVMGetTargetFromTriple(
-                self.triple,
+            let code = LLVMGetTargetFromTriple(
+                self.triple.as_ptr() as *const c_char,
                 &mut target as *mut LLVMTargetRef,
                 &mut msg_ptr as *mut *mut c_char,
             );
+            if code != 0 {
+                return Err(Error::from_ptr(msg_ptr));
+            }
             llref = LLVMCreateTargetMachine(
                 target,
-                self.triple,
-                self.cpu.inner,
-                self.features.inner,
+                self.triple.as_ptr() as *const c_char,
+                b"\0".as_ptr() as *const c_char,
+                b"\0".as_ptr() as *const c_char,
                 self.level,
                 self.reloc,
                 self.code_model,
             );
         }
-        TargetMachine { llref }
+        Ok(TargetMachine { llref })
     }
 }
 
@@ -98,33 +84,41 @@ pub enum FileType {
 }
 
 impl TargetMachine {
-    pub fn emit_to_file(
-        &self,
-        module: &Module,
-        file_type: FileType,
-        path: &Path,
-    ) -> Result<(), Error> {
-        let cpath = CString::new(path.to_str().unwrap()).unwrap();
-        let cgen_ftype = match file_type {
-            FileType::Assembly => LLVMCodeGenFileType::LLVMAssemblyFile,
-            FileType::Object => LLVMCodeGenFileType::LLVMObjectFile,
-        };
+    pub fn builder(triple: &str) -> TargetMachineBuilder {
+        TargetMachineBuilder::new(triple)
+    }
+
+    pub fn data_layout(&self) -> TargetDataLayout {
+        let llref;
         unsafe {
-            let mut msg_ptr = ptr::null_mut();
-            LLVMTargetMachineEmitToFile(
-                self.llref,
-                module.llref,
-                cpath.as_ptr() as *mut c_char,
-                cgen_ftype,
-                &mut msg_ptr as *mut *mut c_char,
-            );
+            llref = LLVMCreateTargetDataLayout(self.llref);
         }
-        Ok(())
+        TargetDataLayout { llref }
     }
 }
 
 impl Drop for TargetMachine {
     fn drop(&mut self) {
         unsafe { LLVMDisposeTargetMachine(self.llref) }
+    }
+}
+
+pub struct TargetDataLayout {
+    llref: LLVMTargetDataRef,
+}
+
+impl TargetDataLayout {
+    pub fn to_string_rep(&self) -> Message {
+        let ptr;
+        unsafe {
+            ptr = LLVMCopyStringRepOfTargetData(self.llref);
+        }
+        Message { inner: ptr }
+    }
+}
+
+impl Drop for TargetDataLayout {
+    fn drop(&mut self) {
+        unsafe { LLVMDisposeTargetData(self.llref) }
     }
 }

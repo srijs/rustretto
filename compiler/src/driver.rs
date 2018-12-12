@@ -7,6 +7,7 @@ use std::process::Command;
 use classfile::ClassFile;
 use failure::{bail, Fallible};
 use llvm;
+use platforms::Platform;
 
 use crate::classes::ClassGraph;
 use crate::compile::Compiler;
@@ -22,9 +23,9 @@ pub(crate) struct Driver {
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target_triple: &str, optimize: bool) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target_platform: Platform, optimize: bool) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
-        let target = Target::new(target_triple);
+        let target = Target::new(target_platform);
         let modules = HashMap::new();
         Ok(Driver {
             loader,
@@ -47,7 +48,7 @@ impl Driver {
             class_names.push(class_name);
         }
 
-        let codegen = CodeGen::new(classes.clone(), self.target.clone());
+        let codegen = CodeGen::new(classes.clone(), self.target.clone())?;
         let mut compiler = Compiler::new(classes.clone(), codegen);
 
         for class_name in class_names {
@@ -96,9 +97,11 @@ impl Driver {
         cmd.arg(output_path);
 
         cmd.args(&["-arch", self.target.arch()]);
-        match &*self.target.os() {
-            "macos" => cmd.args(&["-macosx_version_min", self.target.os_version_min()]),
-            _ => unimplemented!(),
+        match self.target.os() {
+            "macos" => {
+                cmd.args(&["-macosx_version_min", self.target.os_version_min()]);
+            }
+            _ => {}
         };
 
         let exit = cmd.status()?;

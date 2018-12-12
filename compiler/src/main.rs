@@ -48,7 +48,13 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let mut driver = Driver::new(home, "x86_64-apple-darwin", c.optimize)?;
+    let host_platform = platforms::guess_current()
+        .ok_or_else(|| format_err!("could not determine host platform"))?;
+
+    // by default, target the host platform
+    let target_platform = host_platform.clone();
+
+    let mut driver = Driver::new(home, target_platform, c.optimize)?;
 
     driver.compile(&c.main, &c.inputs)?;
 
