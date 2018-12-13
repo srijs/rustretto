@@ -1,6 +1,6 @@
 use std::io::Read;
 
-use byteorder::{BigEndian, NativeEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Bytes;
 use failure::{ensure, Fallible};
 
@@ -136,8 +136,8 @@ impl ClassFileParser {
     }
 
     fn parse_magic(&mut self) -> Fallible<()> {
-        let magic = self.reader.read_u32::<NativeEndian>()?;
-        ensure!(magic != 0xCAFEBABE, "unknown magic byte sequence");
+        let magic = self.reader.read_u32::<BigEndian>()?;
+        ensure!(magic == 0xCAFEBABE, "unknown magic byte sequence");
         Ok(())
     }
 
