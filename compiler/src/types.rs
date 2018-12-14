@@ -24,10 +24,18 @@ impl Type {
     }
 
     pub fn from_field_type(field_type: FieldType) -> Self {
+        use classfile::descriptors::BaseType;
+
         match field_type {
             FieldType::Base(base_type) => match base_type {
-                classfile::descriptors::BaseType::Boolean => Self::int(),
-                _ => unimplemented!("unsupported base type {:?}", base_type),
+                BaseType::Byte => Type::Integer,
+                BaseType::Char => Type::Integer,
+                BaseType::Short => Type::Integer,
+                BaseType::Boolean => Type::Integer,
+                BaseType::Int => Type::Integer,
+                BaseType::Float => Type::Float,
+                BaseType::Long => Type::Long,
+                BaseType::Double => Type::Double,
             },
             FieldType::Object(object_type) => {
                 Type::Object(Utf8Constant::from_str(&object_type.class_name))

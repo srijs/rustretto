@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::Write;
 
 use assert_cli::Assert;
-use tempfile::TempDir;
 use serde_derive::Deserialize;
+use tempfile::TempDir;
 
 #[macro_export]
 macro_rules! cases {
@@ -22,7 +22,7 @@ macro_rules! cases {
 #[derive(Deserialize)]
 pub struct TestCase {
     source: String,
-    output: String
+    output: String,
 }
 
 impl TestCase {
