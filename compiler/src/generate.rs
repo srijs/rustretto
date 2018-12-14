@@ -16,7 +16,8 @@ use crate::classes::ClassGraph;
 use crate::loader::Class;
 use crate::target::Target;
 use crate::translate::{
-    BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, Switch, VarId,
+    BasicBlock, BlockId, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, Switch,
+    VarId,
 };
 use crate::types::Type;
 use crate::vtable::VTableMap;
@@ -300,7 +301,13 @@ impl ClassCodeGen {
                 &method.descriptor.params
             )
         )?;
-        for (i, (_, var)) in blocks.lookup(0).incoming.locals.iter().enumerate() {
+        for (i, (_, var)) in blocks
+            .lookup(BlockId::start())
+            .incoming
+            .locals
+            .iter()
+            .enumerate()
+        {
             if i > 0 {
                 write!(self.out, ", ")?;
             }
@@ -594,13 +601,6 @@ impl TmpVarIdGen {
         let var_id = self.next_id;
         self.next_id += 1;
         var_id
-    }
-}
-
-fn target_datalayout(target: &Target) -> Fallible<&'static str> {
-    match target.triple() {
-        "x86_64-apple-darwin" => Ok("e-m:o-i64:64-f80:128-n8:16:32:64-S128"),
-        _ => bail!("could not determine data layout: unknown target triple"),
     }
 }
 

@@ -11,8 +11,28 @@ use crate::disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange}
 use crate::frame::StackAndLocals;
 use crate::types::Type;
 
-#[derive(Debug)]
-struct BlockId(usize);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BlockId(u32);
+
+impl BlockId {
+    pub fn start() -> Self {
+        BlockId(0)
+    }
+
+    pub fn from_addr(addr: u32) -> Self {
+        BlockId(addr)
+    }
+
+    pub fn from_addr_with_offset(addr: u32, offset: i32) -> Self {
+        BlockId((addr as i64 + offset as i64) as u32)
+    }
+}
+
+impl fmt::Display for BlockId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VarId(pub Type, pub u64);
@@ -84,14 +104,14 @@ pub(crate) enum Comparator {
 #[derive(Debug)]
 pub(crate) struct Switch {
     pub value: VarId,
-    pub default: u32,
-    pub cases: Vec<(i32, u32)>,
+    pub default: BlockId,
+    pub cases: Vec<(i32, BlockId)>,
 }
 
 #[derive(Debug)]
 pub(crate) enum BranchStub {
-    Goto(u32),
-    IfICmp(Comparator, VarId, Option<VarId>, u32, u32),
+    Goto(BlockId),
+    IfICmp(Comparator, VarId, Option<VarId>, BlockId, BlockId),
     Return(Option<VarId>),
     Switch(Switch),
 }
@@ -110,7 +130,7 @@ pub(crate) struct Statement {
 
 #[derive(Debug)]
 pub(crate) struct BasicBlock {
-    pub address: u32,
+    pub address: BlockId,
     pub incoming: StackAndLocals,
     pub statements: Vec<Statement>,
     pub branch_stub: BranchStub,
@@ -233,7 +253,7 @@ impl<'a> TranslateInstr<'a> {
     }
 
     fn goto(self, offset: i16) -> Fallible<Option<TranslateNext>> {
-        let addr = (self.range.start as i64 + offset as i64) as u32;
+        let addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
         return Ok(Some(TranslateNext::Branch(BranchStub::Goto(addr), None)));
     }
 
@@ -247,8 +267,8 @@ impl<'a> TranslateInstr<'a> {
     fn if_icmp(self, offset: i16, comp: Comparator) -> Fallible<Option<TranslateNext>> {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
-        let if_addr = (self.range.start as i64 + offset as i64) as u32;
-        let else_addr = self.range.end;
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
+        let else_addr = BlockId::from_addr(self.range.end);
         return Ok(Some(TranslateNext::Branch(
             BranchStub::IfICmp(comp, value1, Some(value2), if_addr, else_addr),
             None,
@@ -257,8 +277,8 @@ impl<'a> TranslateInstr<'a> {
 
     fn if_zcmp(self, offset: i16, comp: Comparator) -> Fallible<Option<TranslateNext>> {
         let var = self.state.pop();
-        let if_addr = (self.range.start as i64 + offset as i64) as u32;
-        let else_addr = self.range.end;
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
+        let else_addr = BlockId::from_addr(self.range.end);
         return Ok(Some(TranslateNext::Branch(
             BranchStub::IfICmp(comp, var, None, if_addr, else_addr),
             None,
@@ -279,11 +299,11 @@ impl<'a> TranslateInstr<'a> {
 
     fn table_switch(self, table: &TableSwitch) -> Fallible<Option<TranslateNext>> {
         let value = self.state.pop();
-        let default = (self.range.start as i64 + table.default as i64) as u32;
+        let default = BlockId::from_addr_with_offset(self.range.start, table.default);
         let mut cases = Vec::with_capacity(table.offsets.len());
         for (idx, offset) in table.offsets.iter().enumerate() {
             let compare_value = table.low + idx as i32;
-            let addr = (self.range.start as i64 + *offset as i64) as u32;
+            let addr = BlockId::from_addr_with_offset(self.range.start, *offset);
             cases.push((compare_value, addr));
         }
         return Ok(Some(TranslateNext::Branch(
@@ -298,10 +318,10 @@ impl<'a> TranslateInstr<'a> {
 
     fn lookup_switch(self, lookup: &LookupSwitch) -> Fallible<Option<TranslateNext>> {
         let value = self.state.pop();
-        let default = (self.range.start as i64 + lookup.default as i64) as u32;
+        let default = BlockId::from_addr_with_offset(self.range.start, lookup.default);
         let mut cases = Vec::with_capacity(lookup.pairs.len());
         for (compare_value, offset) in lookup.pairs.iter() {
-            let addr = (self.range.start as i64 + *offset as i64) as u32;
+            let addr = BlockId::from_addr_with_offset(self.range.start, *offset);
             cases.push((*compare_value, addr));
         }
         return Ok(Some(TranslateNext::Branch(
@@ -367,7 +387,7 @@ fn translate_block(
     consts: &ConstantPool,
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<BasicBlock> {
-    let address = instr_block.range.start;
+    let address = BlockId(instr_block.range.start);
     let mut state = incoming.clone();
     let mut statements = Vec::new();
     let mut instrs = instr_block.instrs.iter();
@@ -387,7 +407,7 @@ fn translate_block(
                 });
             }
             None => {
-                let branch_stub = BranchStub::Goto(instr_block.range.end);
+                let branch_stub = BranchStub::Goto(BlockId(instr_block.range.end));
                 return Ok(BasicBlock {
                     address,
                     incoming,
@@ -409,10 +429,10 @@ pub(crate) fn translate_method(
 ) -> Fallible<BlockGraph> {
     let instr_block_map = InstructionBlockMap::build(dasm)?;
     let mut blocks = BlockGraph::new();
-    let mut remaining = vec![(0, incoming)];
+    let mut remaining = vec![(BlockId::start(), incoming)];
     while let Some((addr, state)) = remaining.pop() {
         if !blocks.contains(addr) {
-            let instr_block = instr_block_map.block_starting_at(addr);
+            let instr_block = instr_block_map.block_starting_at(addr.0);
             let block = translate_block(instr_block, state, &consts, var_id_gen)?;
             match block.branch_stub {
                 BranchStub::Goto(addr) => {
@@ -422,11 +442,12 @@ pub(crate) fn translate_method(
                     remaining.push((if_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                     remaining.push((else_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
-                BranchStub::Switch(Switch {
-                    default, ref cases, ..
-                }) => {
-                    remaining.push((default, block.outgoing.new_with_same_shape(var_id_gen)));
-                    for (_, addr) in cases.iter() {
+                BranchStub::Switch(ref switch) => {
+                    remaining.push((
+                        switch.default,
+                        block.outgoing.new_with_same_shape(var_id_gen),
+                    ));
+                    for (_, addr) in switch.cases.iter() {
                         remaining.push((*addr, block.outgoing.new_with_same_shape(var_id_gen)));
                     }
                 }

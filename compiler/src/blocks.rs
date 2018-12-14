@@ -4,11 +4,11 @@ use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableGraph;
 use petgraph::Direction;
 
-use crate::translate::{BasicBlock, BranchStub, VarId};
+use crate::translate::{BasicBlock, BlockId, BranchStub, VarId};
 
 pub(crate) struct BlockGraph {
     inner: StableGraph<BasicBlock, ()>,
-    addr_map: BTreeMap<u32, NodeIndex>,
+    addr_map: BTreeMap<BlockId, NodeIndex>,
 }
 
 impl BlockGraph {
@@ -19,16 +19,16 @@ impl BlockGraph {
         }
     }
 
-    pub fn contains(&self, addr: u32) -> bool {
+    pub fn contains(&self, addr: BlockId) -> bool {
         self.addr_map.contains_key(&addr)
     }
 
-    pub fn lookup(&self, addr: u32) -> &BasicBlock {
+    pub fn lookup(&self, addr: BlockId) -> &BasicBlock {
         let index = self.addr_map[&addr];
         &self.inner[index]
     }
 
-    pub fn incoming(&self, addr: u32) -> impl Iterator<Item = &BasicBlock> {
+    pub fn incoming(&self, addr: BlockId) -> impl Iterator<Item = &BasicBlock> {
         let index = self.addr_map[&addr];
         self.inner
             .neighbors_directed(index, Direction::Incoming)
@@ -72,8 +72,8 @@ impl BlockGraph {
         }
     }
 
-    pub fn phis(&self, block: &BasicBlock) -> BTreeMap<VarId, Vec<(VarId, u32)>> {
-        let mut phis = BTreeMap::<VarId, Vec<(VarId, u32)>>::new();
+    pub fn phis(&self, block: &BasicBlock) -> BTreeMap<VarId, Vec<(VarId, BlockId)>> {
+        let mut phis = BTreeMap::<VarId, Vec<(VarId, BlockId)>>::new();
         for incoming_block in self.incoming(block.address) {
             for (i, out_var) in incoming_block.outgoing.stack.iter().enumerate() {
                 let var = &block.incoming.stack[i];
