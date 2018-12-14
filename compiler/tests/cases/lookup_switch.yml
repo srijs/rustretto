@@ -1,0 +1,26 @@
+source: |
+    public class Test {
+        static void print(int value) {
+            switch (value) {
+            case 1:
+                System.out.println("1");
+                return;
+            case 10:
+                System.out.println("10");
+                return;
+            case 100:
+                System.out.println("100");
+                return;
+            default:
+                System.out.println("X");
+            }
+        }
+
+        public static void main(String[] args) {
+            print(0);
+            print(1);
+            print(10);
+            print(100);
+        }
+    }
+output: "X\n1\n10\n100\n"

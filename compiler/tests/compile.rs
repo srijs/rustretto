@@ -5,5 +5,7 @@ cases! {
     println,
     for_loop,
     if_else,
-    inheritance
+    inheritance,
+    table_switch,
+    lookup_switch
 }

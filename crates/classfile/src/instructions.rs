@@ -6,6 +6,20 @@ use failure::{bail, Fallible};
 use crate::ByteBuf;
 
 #[derive(Clone, Debug)]
+pub struct TableSwitch {
+    pub default: i32,
+    pub low: i32,
+    pub high: i32,
+    pub offsets: Vec<i32>,
+}
+
+#[derive(Clone, Debug)]
+pub struct LookupSwitch {
+    pub default: i32,
+    pub pairs: Vec<(i32, i32)>,
+}
+
+#[derive(Clone, Debug)]
 pub enum Instr {
     AaLoad,
     AaStore,
@@ -149,7 +163,7 @@ pub enum Instr {
     LLoad(u8),
     LMul,
     LNeg,
-    LookupSwitch(i32, Vec<(i32, i32)>),
+    LookupSwitch(LookupSwitch),
     LOr,
     LRem,
     LReturn,
@@ -175,7 +189,7 @@ pub enum Instr {
     SaStore,
     SiPush(i16),
     Swap,
-    TableSwitch(i32, i32, i32, Vec<i32>),
+    TableSwitch(TableSwitch),
     WideILoad(u16),
     WideFLoad(u16),
     WideALoad(u16),
@@ -444,7 +458,7 @@ impl Disassembler {
             0x21 => Instr::LLoad(3),
             0x69 => Instr::LMul,
             0x75 => Instr::LNeg,
-            0xab => unimplemented!("TODO: decode lookupswitch"),
+            0xab => Instr::LookupSwitch(self.decode_lookup_switch()?),
             0x81 => Instr::LOr,
             0x71 => Instr::LRem,
             0xad => Instr::LReturn,
@@ -474,7 +488,7 @@ impl Disassembler {
             0x56 => Instr::SaStore,
             0x11 => Instr::SiPush(self.code.read_i16::<BigEndian>()?),
             0x5f => Instr::Swap,
-            0xaa => unimplemented!("TODO: decode tableswitch"),
+            0xaa => Instr::TableSwitch(self.decode_table_switch()?),
             0xc4 => match self.code.read_u8()? {
                 0x15 => Instr::WideILoad(self.code.read_u16::<BigEndian>()?),
                 0x17 => Instr::WideFLoad(self.code.read_u16::<BigEndian>()?),
@@ -496,5 +510,46 @@ impl Disassembler {
             unknown_opcode => bail!("unknown opcode {:x}", unknown_opcode),
         };
         Ok(Some((pos, instruction)))
+    }
+
+    fn decode_table_switch(&mut self) -> Fallible<TableSwitch> {
+        let pos = self.code.position();
+        let align_diff = 0u64.wrapping_sub(pos) & 0b11;
+        self.code.set_position(pos + align_diff);
+
+        let default = self.code.read_i32::<BigEndian>()?;
+        let low = self.code.read_i32::<BigEndian>()?;
+        let high = self.code.read_i32::<BigEndian>()?;
+
+        let count = high - low + 1;
+        let mut offsets = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            offsets.push(self.code.read_i32::<BigEndian>()?);
+        }
+
+        Ok(TableSwitch {
+            default,
+            low,
+            high,
+            offsets,
+        })
+    }
+
+    fn decode_lookup_switch(&mut self) -> Fallible<LookupSwitch> {
+        let pos = self.code.position();
+        let align_diff = 0u64.wrapping_sub(pos) & 0b11;
+        self.code.set_position(pos + align_diff);
+
+        let default = self.code.read_i32::<BigEndian>()?;
+
+        let count = self.code.read_i32::<BigEndian>()?;
+        let mut pairs = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            let value = self.code.read_i32::<BigEndian>()?;
+            let offset = self.code.read_i32::<BigEndian>()?;
+            pairs.push((value, offset));
+        }
+
+        Ok(LookupSwitch { default, pairs })
     }
 }

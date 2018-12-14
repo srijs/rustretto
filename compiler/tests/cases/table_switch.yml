@@ -1,0 +1,26 @@
+source: |
+    public class Test {
+        static void print(int value) {
+            switch (value) {
+            case 0:
+                System.out.println("0");
+                return;
+            case 1:
+                System.out.println("1");
+                return;
+            case 2:
+                System.out.println("2");
+                return;
+            default:
+                System.out.println(">=3");
+            }
+        }
+
+        public static void main(String[] args) {
+            print(0);
+          	print(1);
+          	print(2);
+          	print(3);
+        }
+    }
+output: "0\n1\n2\n>=3\n"

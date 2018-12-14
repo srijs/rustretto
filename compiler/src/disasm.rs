@@ -51,6 +51,20 @@ impl InstructionBlock {
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);
                     true
                 }
+                Instr::TableSwitch(ref table_switch) => {
+                    start_addrs.push((curr_addr as i64 + table_switch.default as i64) as u32);
+                    for offset in table_switch.offsets.iter() {
+                        start_addrs.push((curr_addr as i64 + *offset as i64) as u32);
+                    }
+                    true
+                }
+                Instr::LookupSwitch(ref lookup_switch) => {
+                    start_addrs.push((curr_addr as i64 + lookup_switch.default as i64) as u32);
+                    for (_, offset) in lookup_switch.pairs.iter() {
+                        start_addrs.push((curr_addr as i64 + *offset as i64) as u32);
+                    }
+                    true
+                }
                 _ => false,
             };
             let instr_range = Range {

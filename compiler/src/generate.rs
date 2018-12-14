@@ -16,7 +16,7 @@ use crate::classes::ClassGraph;
 use crate::loader::Class;
 use crate::target::Target;
 use crate::translate::{
-    BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, VarId,
+    BasicBlock, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, Switch, VarId,
 };
 use crate::types::Type;
 use crate::vtable::VTableMap;
@@ -328,6 +328,7 @@ impl ClassCodeGen {
         match &block.branch_stub {
             BranchStub::Goto(addr) => writeln!(self.out, "  br label %B{}", addr)?,
             BranchStub::Return(None) => writeln!(self.out, "  ret void")?,
+            BranchStub::Switch(switch) => self.gen_switch(switch)?,
             BranchStub::IfICmp(comp, var1, var2_opt, if_addr, else_addr) => {
                 let tmpid = self.var_id_gen.gen();
                 let code = match comp {
@@ -355,6 +356,19 @@ impl ClassCodeGen {
             }
             _ => unimplemented!(),
         }
+        Ok(())
+    }
+
+    fn gen_switch(&mut self, switch: &Switch) -> Fallible<()> {
+        write!(
+            self.out,
+            "  switch i32 %v{}, label %B{} [",
+            switch.value.1, switch.default
+        )?;
+        for (value, addr) in switch.cases.iter() {
+            write!(self.out, " i32 {}, label %B{}", value, addr)?;
+        }
+        writeln!(self.out, " ]")?;
         Ok(())
     }
 

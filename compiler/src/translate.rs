@@ -2,7 +2,7 @@ use std::fmt;
 
 use classfile::constant_pool::{Constant, Utf8Constant};
 use classfile::descriptors::ReturnTypeDescriptor;
-use classfile::instructions::{Disassembler, Instr};
+use classfile::instructions::{Disassembler, Instr, LookupSwitch, TableSwitch};
 use classfile::{ConstantIndex, ConstantPool};
 use failure::{bail, Fallible};
 
@@ -82,11 +82,18 @@ pub(crate) enum Comparator {
 }
 
 #[derive(Debug)]
+pub(crate) struct Switch {
+    pub value: VarId,
+    pub default: u32,
+    pub cases: Vec<(i32, u32)>,
+}
+
+#[derive(Debug)]
 pub(crate) enum BranchStub {
     Goto(u32),
     IfICmp(Comparator, VarId, Option<VarId>, u32, u32),
     Return(Option<VarId>),
-    Invoke(Option<VarId>, InvokeExpr, u32),
+    Switch(Switch),
 }
 
 #[derive(Debug)]
@@ -269,6 +276,43 @@ impl<'a> TranslateInstr<'a> {
         };
         return Ok(Some(TranslateNext::Statement(statement)));
     }
+
+    fn table_switch(self, table: &TableSwitch) -> Fallible<Option<TranslateNext>> {
+        let value = self.state.pop();
+        let default = (self.range.start as i64 + table.default as i64) as u32;
+        let mut cases = Vec::with_capacity(table.offsets.len());
+        for (idx, offset) in table.offsets.iter().enumerate() {
+            let compare_value = table.low + idx as i32;
+            let addr = (self.range.start as i64 + *offset as i64) as u32;
+            cases.push((compare_value, addr));
+        }
+        return Ok(Some(TranslateNext::Branch(
+            BranchStub::Switch(Switch {
+                value,
+                default,
+                cases,
+            }),
+            None,
+        )));
+    }
+
+    fn lookup_switch(self, lookup: &LookupSwitch) -> Fallible<Option<TranslateNext>> {
+        let value = self.state.pop();
+        let default = (self.range.start as i64 + lookup.default as i64) as u32;
+        let mut cases = Vec::with_capacity(lookup.pairs.len());
+        for (compare_value, offset) in lookup.pairs.iter() {
+            let addr = (self.range.start as i64 + *offset as i64) as u32;
+            cases.push((*compare_value, addr));
+        }
+        return Ok(Some(TranslateNext::Branch(
+            BranchStub::Switch(Switch {
+                value,
+                default,
+                cases,
+            }),
+            None,
+        )));
+    }
 }
 
 fn translate_next(
@@ -297,6 +341,7 @@ fn translate_next(
             Instr::IConst1 => return t.iconst(1),
             Instr::IConst2 => return t.iconst(2),
             Instr::IConst3 => return t.iconst(3),
+            Instr::BiPush(b) => return t.iconst(*b as i32),
             Instr::IInc(idx, int) => return t.iinc(*idx, *int as i32),
             Instr::GetStatic(idx) => return t.get_static(*idx),
             Instr::LdC(idx) => return t.load_const(*idx),
@@ -308,6 +353,8 @@ fn translate_next(
             Instr::IfEq(offset) => return t.if_zcmp(*offset, Comparator::Eq),
             Instr::IfICmpGe(offset) => return t.if_icmp(*offset, Comparator::Ge),
             Instr::New(idx) => return t.new(*idx),
+            Instr::TableSwitch(table) => return t.table_switch(table),
+            Instr::LookupSwitch(lookup) => return t.lookup_switch(lookup),
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }
@@ -375,8 +422,13 @@ pub(crate) fn translate_method(
                     remaining.push((if_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                     remaining.push((else_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
-                BranchStub::Invoke(_, _, addr) => {
-                    remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
+                BranchStub::Switch(Switch {
+                    default, ref cases, ..
+                }) => {
+                    remaining.push((default, block.outgoing.new_with_same_shape(var_id_gen)));
+                    for (_, addr) in cases.iter() {
+                        remaining.push((*addr, block.outgoing.new_with_same_shape(var_id_gen)));
+                    }
                 }
 
                 BranchStub::Return(_) => {}
