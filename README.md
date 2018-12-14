@@ -4,7 +4,7 @@
 
 #### Requirements
 
-- LLVM
+- LLVM 7.0
 
 #### Building the runtime support library
 
