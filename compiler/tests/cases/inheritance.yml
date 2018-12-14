@@ -1,0 +1,24 @@
+source: |
+    public class Test {
+        public static void main(String[] args) {
+            class A {
+                public void printName() {
+                    System.out.println("A");
+                }
+            }
+
+            class B extends A {
+                @Override
+                public void printName() {
+                    System.out.println("B");
+                }
+            }
+
+            A a = new A();
+            B b = new B();
+
+            ((A)a).printName();
+            ((A)b).printName();
+        }
+    }
+output: "A\nB\n"
