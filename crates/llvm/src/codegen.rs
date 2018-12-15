@@ -19,6 +19,13 @@ pub enum OptLevel {
     Aggressive,
 }
 
+pub enum RelocMode {
+    Default,
+    Static,
+    PIC,
+    DynamicNoPIC
+}
+
 static INIT_NATIVE_TARGET: Once = Once::new();
 static INIT_NATIVE_ASM_PRINTER: Once = Once::new();
 
@@ -71,6 +78,15 @@ impl TargetMachineBuilder {
             OptLevel::Less => LLVMCodeGenOptLevel::LLVMCodeGenLevelLess,
             OptLevel::Default => LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault,
             OptLevel::Aggressive => LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+        }
+    }
+
+    pub fn set_reloc_mode(&mut self, mode: RelocMode) {
+        self.reloc = match mode {
+            RelocMode::Default => LLVMRelocMode::LLVMRelocDefault,
+            RelocMode::Static => LLVMRelocMode::LLVMRelocStatic,
+            RelocMode::PIC => LLVMRelocMode::LLVMRelocPIC,
+            RelocMode::DynamicNoPIC => LLVMRelocMode::LLVMRelocDynamicNoPic,
         }
     }
 

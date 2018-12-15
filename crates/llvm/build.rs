@@ -3,6 +3,7 @@ fn main() {
 
     cc::Build::new()
         .file("wrappers/target.c")
+        .opt_level(3)
         .compile("targetwrappers");
 
     cc::Build::new()

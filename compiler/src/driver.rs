@@ -31,6 +31,7 @@ impl Driver {
         let modules = HashMap::new();
 
         let mut machine_builder = llvm::codegen::TargetMachine::builder();
+        machine_builder.set_reloc_mode(llvm::codegen::RelocMode::PIC);
         if optimize {
             machine_builder.set_opt_level(llvm::codegen::OptLevel::Aggressive);
         }
@@ -101,22 +102,21 @@ impl Driver {
         main_out.write_all(&main_obj)?;
         main_out.flush()?;
 
-        let mut cmd = Command::new("/usr/bin/ld");
+        let mut cmd = Command::new("/usr/bin/cc");
         cmd.arg(main_out.path());
         cmd.arg(runtime_path);
         cmd.arg("-lc");
         cmd.arg("-o");
         cmd.arg(output_path);
 
-        cmd.args(&["-arch", self.target.arch()]);
         match self.target.os() {
             "macos" => {
                 let triple = self.machine.triple();
                 let (major, minor, micro) = triple.get_macosx_version();
-                cmd.args(&[
-                    "-macosx_version_min",
-                    &format!("{}.{}.{}", major, minor, micro),
-                ]);
+                cmd.arg(format!(
+                    "-mmacosx-version-min={}.{}.{}",
+                    major, minor, micro
+                ));
             }
             _ => {}
         };
