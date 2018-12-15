@@ -9,12 +9,11 @@ use classfile::descriptors::{
 };
 use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
 use failure::{bail, Fallible};
-use llvm::codegen::{TargetDataLayout, TargetMachine};
+use llvm::codegen::{TargetDataLayout, TargetMachine, TargetTriple};
 
 use crate::blocks::BlockGraph;
 use crate::classes::ClassGraph;
 use crate::loader::Class;
-use crate::target::Target;
 use crate::translate::{
     BasicBlock, BlockId, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, Switch,
     VarId,
@@ -25,22 +24,19 @@ use crate::vtable::VTableMap;
 pub(crate) struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
-    target: Target,
-    target_machine: TargetMachine,
-    target_data_layout: TargetDataLayout,
+    machine: Arc<TargetMachine>,
+    data_layout: TargetDataLayout,
 }
 
 impl CodeGen {
-    pub fn new(classes: ClassGraph, target: Target) -> Fallible<Self> {
+    pub fn new(classes: ClassGraph, machine: Arc<TargetMachine>) -> Fallible<Self> {
         let vtables = VTableMap::new(classes.clone());
-        let target_machine = TargetMachine::builder().build()?;
-        let target_data_layout = target_machine.data_layout();
+        let data_layout = machine.data_layout();
         Ok(CodeGen {
             classes,
             vtables,
-            target,
-            target_machine,
-            target_data_layout,
+            machine,
+            data_layout,
         })
     }
 
@@ -61,8 +57,8 @@ impl CodeGen {
             classes: self.classes.clone(),
             vtables: self.vtables.clone(),
             var_id_gen: TmpVarIdGen::new(),
-            target: self.target.clone(),
-            target_data_layout_string_rep: self.target_data_layout.to_string_rep(),
+            target_triple: self.machine.triple(),
+            target_data_layout: self.data_layout.to_string_rep(),
         })
     }
 }
@@ -73,8 +69,8 @@ pub(crate) struct ClassCodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
     var_id_gen: TmpVarIdGen,
-    target: Target,
-    target_data_layout_string_rep: llvm::Message,
+    target_triple: TargetTriple,
+    target_data_layout: llvm::Message,
 }
 
 impl ClassCodeGen {
@@ -248,9 +244,9 @@ impl ClassCodeGen {
         writeln!(
             self.out,
             "target datalayout = \"{}\"",
-            self.target_data_layout_string_rep
+            self.target_data_layout
         )?;
-        writeln!(self.out, "target triple = \"{}\"", self.target.triple())?;
+        writeln!(self.out, "target triple = \"{}\"", self.target_triple)?;
         writeln!(self.out, "")?;
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;

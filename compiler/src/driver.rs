@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 use classfile::ClassFile;
 use failure::{bail, Fallible};
@@ -20,6 +21,7 @@ pub(crate) struct Driver {
     target: Target,
     optimize: bool,
     modules: HashMap<String, String>,
+    machine: Arc<llvm::codegen::TargetMachine>,
 }
 
 impl Driver {
@@ -27,11 +29,19 @@ impl Driver {
         let loader = BootstrapClassLoader::open(home)?;
         let target = Target::new(platform);
         let modules = HashMap::new();
+
+        let mut machine_builder = llvm::codegen::TargetMachine::builder();
+        if optimize {
+            machine_builder.set_opt_level(llvm::codegen::OptLevel::Aggressive);
+        }
+        let machine = Arc::new(machine_builder.build()?);
+
         Ok(Driver {
             loader,
             target,
             optimize,
             modules,
+            machine,
         })
     }
 
@@ -48,7 +58,7 @@ impl Driver {
             class_names.push(class_name);
         }
 
-        let codegen = CodeGen::new(classes.clone(), self.target.clone())?;
+        let codegen = CodeGen::new(classes.clone(), self.machine.clone())?;
         let mut compiler = Compiler::new(classes.clone(), codegen);
 
         for class_name in class_names {
@@ -84,8 +94,10 @@ impl Driver {
         let pass_manager = pass_manager_builder.build();
 
         pass_manager.run(&mut main);
-        let main_obj = main.to_bitcode();
-        let mut main_out = tempfile::NamedTempFile::new()?;
+        let main_obj = self
+            .machine
+            .emit_to_buffer(&main, llvm::codegen::FileType::Object)?;
+        let mut main_out = tempfile::Builder::new().suffix(".o").tempfile()?;
         main_out.write_all(&main_obj)?;
         main_out.flush()?;
 
@@ -99,7 +111,12 @@ impl Driver {
         cmd.args(&["-arch", self.target.arch()]);
         match self.target.os() {
             "macos" => {
-                cmd.args(&["-macosx_version_min", self.target.os_version_min()]);
+                let triple = self.machine.triple();
+                let (major, minor, micro) = triple.get_macosx_version();
+                cmd.args(&[
+                    "-macosx_version_min",
+                    &format!("{}.{}.{}", major, minor, micro),
+                ]);
             }
             _ => {}
         };
