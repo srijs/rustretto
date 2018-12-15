@@ -2,7 +2,7 @@ use std::alloc::System;
 use std::env;
 use std::path::PathBuf;
 
-use failure::{format_err, Fallible};
+use failure::{bail, format_err, Fallible};
 use structopt::StructOpt;
 
 mod blocks;
@@ -54,6 +54,11 @@ fn compile(c: Compile) -> Fallible<()> {
     // by default, target the host platform
     let target_platform = host_platform.clone();
 
+    match target_platform.target_arch {
+        platforms::target::Arch::X86 | platforms::target::Arch::X86_64 => llvm::codegen::init_x86(),
+        arch => bail!("unsupported architecture {}", arch.as_str()),
+    }
+
     let mut driver = Driver::new(home, target_platform, c.optimize)?;
 
     driver.compile(&c.main, &c.inputs)?;
@@ -69,7 +74,6 @@ fn compile(c: Compile) -> Fallible<()> {
 
 fn main() {
     env_logger::init();
-    llvm::init();
     if let Err(err) = compile(Compile::from_args()) {
         println!("Error: {}", err);
         println!("{}", err.backtrace());

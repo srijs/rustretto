@@ -122,3 +122,13 @@ impl Drop for TargetDataLayout {
         unsafe { LLVMDisposeTargetData(self.llref) }
     }
 }
+
+#[inline]
+pub fn init_x86() {
+    unsafe {
+        llvm_sys::target::LLVMInitializeX86TargetInfo();
+        llvm_sys::target::LLVMInitializeX86Target();
+        llvm_sys::target::LLVMInitializeX86TargetMC();
+        llvm_sys::target::LLVMInitializeX86AsmPrinter();
+    }
+}
