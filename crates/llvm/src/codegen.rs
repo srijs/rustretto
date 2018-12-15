@@ -1,5 +1,5 @@
-use std::ffi::CString;
 use std::ptr;
+use std::sync::Once;
 
 use libc::c_char;
 use llvm_sys::target::*;
@@ -15,23 +15,21 @@ pub enum OptLevel {
     Aggressive,
 }
 
+static INIT_NATIVE_TARGET: Once = Once::new();
+
 pub struct TargetMachineBuilder {
-    triple: CString,
     level: LLVMCodeGenOptLevel,
     reloc: LLVMRelocMode,
     code_model: LLVMCodeModel,
 }
 
 impl TargetMachineBuilder {
-    pub fn new(triple: &str) -> Self {
-        let triple_cstring = CString::new(triple).unwrap();
-
+    pub fn new() -> Self {
         let level = LLVMCodeGenOptLevel::LLVMCodeGenLevelDefault;
         let reloc = LLVMRelocMode::LLVMRelocDefault;
         let code_model = LLVMCodeModel::LLVMCodeModelDefault;
 
         TargetMachineBuilder {
-            triple: triple_cstring,
             level,
             reloc,
             code_model,
@@ -48,12 +46,23 @@ impl TargetMachineBuilder {
     }
 
     pub fn build(self) -> Result<TargetMachine, Error> {
+        INIT_NATIVE_TARGET.call_once(|| {
+            let code;
+            unsafe {
+                code = llvm_sys::target::LLVM_InitializeNativeTarget();
+            }
+            if code != 0 {
+                panic!("unable to initialize native target");
+            }
+        });
+
         let llref;
         unsafe {
+            let target_triple = LLVMGetDefaultTargetTriple();
             let mut target = ptr::null_mut();
             let mut msg_ptr = ptr::null_mut();
             let code = LLVMGetTargetFromTriple(
-                self.triple.as_ptr() as *const c_char,
+                target_triple,
                 &mut target as *mut LLVMTargetRef,
                 &mut msg_ptr as *mut *mut c_char,
             );
@@ -62,7 +71,7 @@ impl TargetMachineBuilder {
             }
             llref = LLVMCreateTargetMachine(
                 target,
-                self.triple.as_ptr() as *const c_char,
+                target_triple,
                 b"\0".as_ptr() as *const c_char,
                 b"\0".as_ptr() as *const c_char,
                 self.level,
@@ -84,8 +93,8 @@ pub enum FileType {
 }
 
 impl TargetMachine {
-    pub fn builder(triple: &str) -> TargetMachineBuilder {
-        TargetMachineBuilder::new(triple)
+    pub fn builder() -> TargetMachineBuilder {
+        TargetMachineBuilder::new()
     }
 
     pub fn data_layout(&self) -> TargetDataLayout {
@@ -120,15 +129,5 @@ impl TargetDataLayout {
 impl Drop for TargetDataLayout {
     fn drop(&mut self) {
         unsafe { LLVMDisposeTargetData(self.llref) }
-    }
-}
-
-#[inline]
-pub fn init_x86() {
-    unsafe {
-        llvm_sys::target::LLVMInitializeX86TargetInfo();
-        llvm_sys::target::LLVMInitializeX86Target();
-        llvm_sys::target::LLVMInitializeX86TargetMC();
-        llvm_sys::target::LLVMInitializeX86AsmPrinter();
     }
 }

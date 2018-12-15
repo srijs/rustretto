@@ -33,7 +33,7 @@ pub(crate) struct CodeGen {
 impl CodeGen {
     pub fn new(classes: ClassGraph, target: Target) -> Fallible<Self> {
         let vtables = VTableMap::new(classes.clone());
-        let target_machine = TargetMachine::builder(target.triple()).build()?;
+        let target_machine = TargetMachine::builder().build()?;
         let target_data_layout = target_machine.data_layout();
         Ok(CodeGen {
             classes,

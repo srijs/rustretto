@@ -2,7 +2,7 @@ use std::alloc::System;
 use std::env;
 use std::path::PathBuf;
 
-use failure::{bail, format_err, Fallible};
+use failure::{format_err, Fallible};
 use structopt::StructOpt;
 
 mod blocks;
@@ -48,18 +48,10 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let host_platform = platforms::guess_current()
+    let platform = platforms::guess_current()
         .ok_or_else(|| format_err!("could not determine host platform"))?;
 
-    // by default, target the host platform
-    let target_platform = host_platform.clone();
-
-    match target_platform.target_arch {
-        platforms::target::Arch::X86 | platforms::target::Arch::X86_64 => llvm::codegen::init_x86(),
-        arch => bail!("unsupported architecture {}", arch.as_str()),
-    }
-
-    let mut driver = Driver::new(home, target_platform, c.optimize)?;
+    let mut driver = Driver::new(home, platform.clone(), c.optimize)?;
 
     driver.compile(&c.main, &c.inputs)?;
 

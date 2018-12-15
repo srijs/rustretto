@@ -23,9 +23,9 @@ pub(crate) struct Driver {
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target_platform: Platform, optimize: bool) -> Fallible<Self> {
+    pub fn new(home: PathBuf, platform: Platform, optimize: bool) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
-        let target = Target::new(target_platform);
+        let target = Target::new(platform);
         let modules = HashMap::new();
         Ok(Driver {
             loader,
