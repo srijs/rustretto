@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 bytes = "0.4.10"
 failure = "0.1.2"
-zip = "0.5.0"
+zip = { git = "https://github.com/srijs/zip-rs.git", rev = "5d5491d" }
 
 [dependencies.classfile]
 path = "../classfile"
