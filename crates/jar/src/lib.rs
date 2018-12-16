@@ -9,15 +9,30 @@ use classfile::ClassFile;
 use failure::Fallible;
 use zip::read::ZipArchive;
 
+mod manifest;
+pub use self::manifest::Manifest;
+
 #[derive(Debug)]
 pub struct JarReader<R: Read + Seek> {
     archive: ZipArchive<BufReader<R>>,
+    manifest: Option<Manifest>,
 }
 
 impl<R: Read + Seek> JarReader<R> {
     pub fn new(reader: R) -> Fallible<Self> {
-        let archive = ZipArchive::new(BufReader::new(reader))?;
-        Ok(JarReader { archive })
+        let mut archive = ZipArchive::new(BufReader::new(reader))?;
+
+        let manifest = match archive.by_name("META-INF/MANIFEST.MF") {
+            Ok(file) => Some(Manifest::parse(file)?),
+            Err(zip::result::ZipError::FileNotFound) => None,
+            Err(err) => return Err(err.into()),
+        };
+
+        Ok(JarReader { manifest, archive })
+    }
+
+    pub fn manifest(&self) -> Option<&Manifest> {
+        self.manifest.as_ref()
     }
 
     pub fn get_class_entry(&mut self, name: &str) -> Fallible<ClassEntry> {

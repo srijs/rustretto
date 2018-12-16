@@ -16,6 +16,20 @@ impl StrBuf {
     pub unsafe fn from_utf8_unchecked(bytes: Bytes) -> Self {
         StrBuf(string::String::from_utf8_unchecked(bytes))
     }
+
+    pub fn str_ref(&self, s: &str) -> Self {
+        let bytes = self.0.get_ref().slice_ref(s.as_bytes());
+        unsafe { StrBuf::from_utf8_unchecked(bytes) }
+    }
+}
+
+impl From<String> for StrBuf {
+    fn from(string: String) -> Self {
+        let bytes = string.into();
+        // SAFETY: We know that the bytes contain valid utf8, since
+        //         they have been converted from the input string.
+        unsafe { Self::from_utf8_unchecked(bytes) }
+    }
 }
 
 impl Hash for StrBuf {

@@ -7,7 +7,11 @@ edition = "2018"
 [dependencies]
 bytes = "0.4.10"
 failure = "0.1.2"
+indexmap = "1.0.2"
 zip = { git = "https://github.com/srijs/zip-rs.git", rev = "5d5491d" }
+
+[dependencies.strbuf]
+path = "../strbuf"
 
 [dependencies.classfile]
 path = "../classfile"
