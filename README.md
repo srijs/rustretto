@@ -1,5 +1,9 @@
 # Rustretto
 
+[![Build Status](https://travis-ci.com/srijs/rustretto.svg?branch=master)](https://travis-ci.com/srijs/rustretto)
+
+## Getting started
+
 ### Building
 
 #### Requirements
