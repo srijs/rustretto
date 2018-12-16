@@ -24,7 +24,7 @@ impl Attributes {
             let name = consts.get_utf8(name_index).unwrap();
             let len = reader.read_u32::<BigEndian>()?;
             let info = reader.split_to(len as usize);
-            attrs.push((name.0.clone(), info));
+            attrs.push((name.clone(), info));
         }
         Ok(Attributes {
             attrs,

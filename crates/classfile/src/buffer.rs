@@ -1,45 +1,10 @@
 use std::borrow::Cow;
 use std::io::Read;
-use std::ops::Deref;
 
 use bytes::{Buf, Bytes};
 use cesu8;
 use failure::Fallible;
-use string;
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct StrBuf(string::String<Bytes>);
-
-impl StrBuf {
-    pub(crate) fn from_str(s: &str) -> Self {
-        StrBuf(string::String::from_str(s))
-    }
-
-    pub(crate) fn from_java_cesu8(bytes: &ByteBuf) -> Fallible<Self> {
-        let s = match cesu8::from_java_cesu8(&bytes.0)? {
-            Cow::Owned(s) => {
-                // SAFETY: We convert a `String` into `Bytes`, which means that
-                //         the byte buffer only contains valid UTF-8.
-                unsafe { string::String::from_utf8_unchecked(s.into()) }
-            }
-            Cow::Borrowed(_) => {
-                // SAFETY: The `cesu8::from_java_cesu8` function has successfully
-                //         returned a borrowed string, therefore we conclude that
-                //         the input buffer is valid UTF-8.
-                unsafe { string::String::from_utf8_unchecked(bytes.0.clone()) }
-            }
-        };
-        Ok(StrBuf(s))
-    }
-}
-
-impl Deref for StrBuf {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
+use strbuf::StrBuf;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ByteBuf(Bytes);
@@ -51,6 +16,23 @@ impl ByteBuf {
 
     pub(crate) fn split_to(&mut self, at: usize) -> ByteBuf {
         ByteBuf(self.0.split_to(at))
+    }
+
+    pub(crate) fn parse_java_cesu8(&self) -> Fallible<StrBuf> {
+        let strbuf = match cesu8::from_java_cesu8(&self.0)? {
+            Cow::Owned(s) => {
+                // SAFETY: We convert a `String` into `Bytes`, which means that
+                //         the byte buffer only contains valid UTF-8.
+                unsafe { StrBuf::from_utf8_unchecked(s.into()) }
+            }
+            Cow::Borrowed(_) => {
+                // SAFETY: The `cesu8::from_java_cesu8` function has successfully
+                //         returned a borrowed string, therefore we conclude that
+                //         the input buffer is valid UTF-8.
+                unsafe { StrBuf::from_utf8_unchecked(self.0.clone()) }
+            }
+        };
+        Ok(strbuf)
     }
 }
 

@@ -14,6 +14,9 @@ platforms = "0.1.4"
 structopt = "0.2.13"
 tempfile = "3.0.4"
 
+[dependencies.strbuf]
+path = "../crates/strbuf"
+
 [dependencies.classfile]
 path = "../crates/classfile"
 

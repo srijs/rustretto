@@ -3,6 +3,7 @@ use std::io::Read;
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Bytes;
 use failure::{ensure, Fallible};
+use strbuf::StrBuf;
 
 mod access_flags;
 mod buffer;
@@ -15,7 +16,7 @@ pub mod descriptors;
 pub use self::descriptors::{FieldType, MethodDescriptor};
 pub mod instructions;
 
-use crate::buffer::{ByteBuf, StrBuf};
+use crate::buffer::ByteBuf;
 
 #[derive(Debug)]
 pub struct Version {
@@ -110,7 +111,7 @@ impl ClassFile {
         })
     }
 
-    pub fn get_name(&self) -> &self::constant_pool::Utf8Constant {
+    pub fn get_name(&self) -> &StrBuf {
         self.constant_pool
             .get_utf8(self.get_this_class().name_index)
             .unwrap()

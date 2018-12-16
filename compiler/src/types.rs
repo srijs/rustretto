@@ -1,5 +1,5 @@
-use classfile::constant_pool::Utf8Constant;
 use classfile::FieldType;
+use strbuf::StrBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
@@ -9,7 +9,7 @@ pub enum Type {
     Long,
     Double,
     Null,
-    Object(Utf8Constant),
+    Object(StrBuf),
     Uninitialized,
     UninitializedThis,
 }
@@ -20,7 +20,7 @@ impl Type {
     }
 
     pub fn string() -> Self {
-        Type::Object(Utf8Constant::from_str("java.lang.String"))
+        Type::Object(StrBuf::from_str("java.lang.String"))
     }
 
     pub fn from_field_type(field_type: FieldType) -> Self {
@@ -38,11 +38,11 @@ impl Type {
                 BaseType::Double => Type::Double,
             },
             FieldType::Object(object_type) => {
-                Type::Object(Utf8Constant::from_str(&object_type.class_name))
+                Type::Object(StrBuf::from_str(&object_type.class_name))
             }
             FieldType::Array(array_type) => {
                 let class_name = format!("[{}", array_type.component_type.to_string());
-                Type::Object(Utf8Constant::from_str(&class_name))
+                Type::Object(StrBuf::from_str(&class_name))
             }
         }
     }

@@ -23,7 +23,7 @@ pub enum RelocMode {
     Default,
     Static,
     PIC,
-    DynamicNoPIC
+    DynamicNoPIC,
 }
 
 static INIT_NATIVE_TARGET: Once = Once::new();

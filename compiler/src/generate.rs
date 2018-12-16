@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use classfile::attrs::SourceFile;
-use classfile::constant_pool::{Constant, Utf8Constant};
+use classfile::constant_pool::Constant;
 use classfile::descriptors::{
     ArrayType, BaseType, FieldType, MethodDescriptor, ObjectType, ParameterDescriptor,
     ReturnTypeDescriptor,
@@ -10,6 +10,7 @@ use classfile::descriptors::{
 use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
 use failure::{bail, Fallible};
 use llvm::codegen::{TargetDataLayout, TargetMachine, TargetTriple};
+use strbuf::StrBuf;
 
 use crate::blocks::BlockGraph;
 use crate::classes::ClassGraph;
@@ -104,7 +105,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_type(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
+    pub(crate) fn gen_vtable_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
         writeln!(self.out, "%vtable.{} = type {{", mangle(class_name))?;
         for (idx, (key, _)) in vtable.iter().enumerate() {
@@ -122,7 +123,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_const(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
+    pub(crate) fn gen_vtable_const(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
         let mangled_class_name = mangle(class_name);
 
@@ -154,7 +155,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_decls(&mut self, class_name: &Utf8Constant) -> Fallible<()> {
+    pub(crate) fn gen_vtable_decls(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
 
         for (key, target) in vtable.iter() {

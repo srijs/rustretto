@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
-use classfile::constant_pool::Utf8Constant;
 use classfile::{MethodAccessFlags, MethodDescriptor};
 use failure::{bail, Fallible};
 use indexmap::{Equivalent, IndexMap};
+use strbuf::StrBuf;
 
 use crate::classes::ClassGraph;
 use crate::loader::Class;
@@ -26,7 +26,7 @@ value info:
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct MethodDispatchKey {
-    pub method_name: Utf8Constant,
+    pub method_name: StrBuf,
     pub method_descriptor: MethodDescriptor,
 }
 
@@ -57,7 +57,7 @@ impl<'a> Equivalent<MethodDispatchKey> for LookupKey<'a> {
 
 #[derive(Debug)]
 pub(crate) struct MethodDispatchTarget {
-    pub class_name: Utf8Constant,
+    pub class_name: StrBuf,
     pub is_abstract: bool,
     pub is_override: bool,
 }
@@ -96,7 +96,7 @@ impl VTable {
 #[derive(Clone, Debug)]
 pub(crate) struct VTableMap {
     classes: ClassGraph,
-    inner: Arc<Mutex<HashMap<Utf8Constant, VTable>>>,
+    inner: Arc<Mutex<HashMap<StrBuf, VTable>>>,
 }
 
 impl VTableMap {
@@ -107,7 +107,7 @@ impl VTableMap {
         }
     }
 
-    pub fn get(&self, name: &Utf8Constant) -> Fallible<VTable> {
+    pub fn get(&self, name: &StrBuf) -> Fallible<VTable> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.contains_key(name) {
             let mut table = IndexMap::new();

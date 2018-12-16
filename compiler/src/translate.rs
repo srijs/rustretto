@@ -1,10 +1,11 @@
 use std::fmt;
 
-use classfile::constant_pool::{Constant, Utf8Constant};
+use classfile::constant_pool::Constant;
 use classfile::descriptors::ReturnTypeDescriptor;
 use classfile::instructions::{Disassembler, Instr, LookupSwitch, TableSwitch};
 use classfile::{ConstantIndex, ConstantPool};
 use failure::{bail, Fallible};
+use strbuf::StrBuf;
 
 use crate::blocks::BlockGraph;
 use crate::disasm::{InstructionBlock, InstructionBlockMap, InstructionWithRange};
@@ -89,7 +90,7 @@ pub(crate) enum Expr {
     GetStatic(ConstantIndex),
     Invoke(InvokeExpr),
     IInc(VarId, i32),
-    New(Utf8Constant),
+    New(StrBuf),
 }
 
 #[derive(Debug)]

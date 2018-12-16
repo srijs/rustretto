@@ -1,16 +1,14 @@
-use std::borrow::Borrow;
-use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::io::Read;
-use std::ops::{Deref, Index};
+use std::ops::Index;
 use std::sync::Arc;
 
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::{bail, Fallible};
+use strbuf::StrBuf;
 
 use super::descriptors::{FieldType, MethodDescriptor};
 use super::{FieldRef, MethodRef};
-use crate::buffer::{ByteBuf, StrBuf};
+use crate::buffer::ByteBuf;
 
 const CONSTANT_CLASS: u8 = 7;
 const CONSTANT_FIELD_REF: u8 = 9;
@@ -54,9 +52,9 @@ impl ConstantPool {
         }
     }
 
-    pub fn get_utf8(&self, idx: ConstantIndex) -> Option<&Utf8Constant> {
+    pub fn get_utf8(&self, idx: ConstantIndex) -> Option<&StrBuf> {
         if let Some(&Constant::Utf8(ref strc)) = self.get_info(idx) {
-            Some(strc)
+            Some(&strc.0)
         } else {
             None
         }
@@ -262,7 +260,7 @@ impl<'a> ConstantPoolParser<'a> {
     fn parse_constant_utf8_info(&mut self) -> Fallible<Utf8Constant> {
         let len = self.reader.read_u16::<BigEndian>()?;
         let bytes = self.reader.split_to(len as usize);
-        Ok(Utf8Constant(StrBuf::from_java_cesu8(&bytes)?))
+        Ok(Utf8Constant(bytes.parse_java_cesu8()?))
     }
 
     fn parse_constant_method_handle_info(&mut self) -> Fallible<MethodHandleConstant> {
@@ -363,39 +361,7 @@ pub struct NameAndTypeConstant {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Utf8Constant(pub(crate) StrBuf);
-
-impl Hash for Utf8Constant {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        str::hash(&*self.0, state);
-    }
-}
-
-impl Utf8Constant {
-    pub fn from_str(s: &str) -> Self {
-        Utf8Constant(StrBuf::from_str(s))
-    }
-}
-
-impl fmt::Display for Utf8Constant {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&*self.0)
-    }
-}
-
-impl Borrow<str> for Utf8Constant {
-    fn borrow(&self) -> &str {
-        &*self.0
-    }
-}
-
-impl Deref for Utf8Constant {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
+pub struct Utf8Constant(pub StrBuf);
 
 #[derive(Debug)]
 pub struct MethodHandleConstant {

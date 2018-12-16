@@ -1,7 +1,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use failure::{bail, Fallible};
+use strbuf::StrBuf;
 
-use super::super::constant_pool::Utf8Constant;
 use super::super::{ConstantIndex, ConstantPool};
 use super::{private, Attribute, RawAttribute};
 use crate::ByteBuf;
@@ -106,7 +106,7 @@ pub enum VerificationTypeInfo {
     Double,
     Null,
     UninitializedThis,
-    Object(Utf8Constant),
+    Object(StrBuf),
     Uninitialized(u16),
 }
 

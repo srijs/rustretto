@@ -1,7 +1,8 @@
 use classfile::attrs::Code;
-use classfile::constant_pool::{Constant, Utf8Constant};
+use classfile::constant_pool::Constant;
 use classfile::descriptors::ParameterDescriptor;
 use failure::{bail, Fallible};
+use strbuf::StrBuf;
 
 use crate::classes::ClassGraph;
 use crate::frame::StackAndLocals;
@@ -20,7 +21,7 @@ impl Compiler {
         Self { classes, codegen }
     }
 
-    pub fn compile(&mut self, class_name: &Utf8Constant, main: bool) -> Fallible<String> {
+    pub fn compile(&mut self, class_name: &StrBuf, main: bool) -> Fallible<String> {
         let cf = match self.classes.get(&class_name)? {
             Class::File(class_file) => class_file,
             class => bail!("unexpected class type {:?}", class),

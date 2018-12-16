@@ -1,13 +1,14 @@
 [workspace]
 members = [
-  "crates/classfile",
-  "crates/jar",
-  "crates/llvm",
+  "compiler",
+  "runtime",
 
   "tools/javapv",
 
-  "compiler",
-  "runtime"
+  "crates/strbuf",
+  "crates/classfile",
+  "crates/jar",
+  "crates/llvm"
 ]
 
 [profile.release]
