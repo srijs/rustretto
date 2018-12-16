@@ -1,12 +1,12 @@
 use std::io::Read;
 
+use failure::{ensure, Fallible};
 use indexmap::IndexMap;
 use strbuf::StrBuf;
-use failure::{ensure, Fallible};
 
 #[derive(Debug)]
 pub struct Manifest {
-    main: IndexMap<StrBuf, StrBuf>
+    main: IndexMap<StrBuf, StrBuf>,
 }
 
 impl Manifest {
@@ -14,7 +14,10 @@ impl Manifest {
         self.main.get(name).map(|value| &*value as &str)
     }
 
-    pub(crate) fn parse<R>(mut read: R) -> Fallible<Self> where R: Read {
+    pub(crate) fn parse<R>(mut read: R) -> Fallible<Self>
+    where
+        R: Read,
+    {
         let mut buf = String::new();
         read.read_to_string(&mut buf)?;
         let strbuf = StrBuf::from(buf);
@@ -39,7 +42,10 @@ impl Manifest {
             }
 
             // parse header delimiter
-            ensure!(&line[name_end_idx + 1..=name_end_idx + 2] == ": ", "bad delimiter");
+            ensure!(
+                &line[name_end_idx + 1..=name_end_idx + 2] == ": ",
+                "bad delimiter"
+            );
 
             // parse header value
             let value_start_idx = name_end_idx + 3;
@@ -71,7 +77,10 @@ mod tests {
         let manifest = Manifest::parse(std::io::Cursor::new(input)).unwrap();
 
         assert_eq!("1.0", manifest.get("Manifest-Version").unwrap());
-        assert_eq!("1.8.0_181 (Oracle Corporation)", manifest.get("Created-By").unwrap());
+        assert_eq!(
+            "1.8.0_181 (Oracle Corporation)",
+            manifest.get("Created-By").unwrap()
+        );
         assert_eq!("Test", manifest.get("Main-Class").unwrap());
     }
 }
