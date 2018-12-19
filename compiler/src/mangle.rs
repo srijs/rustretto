@@ -150,3 +150,53 @@ impl Mangler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use classfile::descriptors::{
+        BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
+    };
+    use cpp_demangle::Symbol;
+    use regex::Regex;
+
+    macro_rules! assert_demangle_match {
+        ($re: expr, $cmp: expr) => {{
+            let demangled = Symbol::new($cmp).unwrap().to_string();
+            assert!(
+                Regex::new($re).unwrap().is_match(&demangled),
+                "{:?} does not match pattern {}",
+                demangled,
+                $re
+            );
+        }};
+    }
+
+    #[test]
+    fn method_name_without_parameters() {
+        let mangled =
+            mangle_method_name("java/lang/Object", "wait", &ReturnTypeDescriptor::Void, &[]);
+
+        assert_demangle_match!(
+            r"^void java::lang::Object::wait<J[[:xdigit:]]+>\(\)$",
+            mangled
+        );
+    }
+
+    #[test]
+    fn method_name_with_single_parameter() {
+        let mangled = mangle_method_name(
+            "java/lang/Object",
+            "equals",
+            &ReturnTypeDescriptor::Field(FieldType::Base(BaseType::Boolean)),
+            &[ParameterDescriptor::Field(FieldType::Object(ObjectType {
+                class_name: "java.lang.Object".to_owned(),
+            }))],
+        );
+
+        assert_demangle_match!(
+            r"^boolean java::lang::Object::equals<J[[:xdigit:]]+>\(java::lang::Object\)$",
+            mangled
+        );
+    }
+}
