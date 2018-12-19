@@ -13,6 +13,7 @@ mod driver;
 mod frame;
 mod generate;
 mod loader;
+mod mangle;
 mod target;
 mod translate;
 mod types;

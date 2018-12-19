@@ -15,6 +15,7 @@ use strbuf::StrBuf;
 use crate::blocks::BlockGraph;
 use crate::classes::ClassGraph;
 use crate::loader::Class;
+use crate::mangle;
 use crate::translate::{
     BasicBlock, BlockId, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, Switch,
     VarId,
@@ -89,7 +90,7 @@ impl ClassCodeGen {
         writeln!(
             self.out,
             "  call void @{}(%ref zeroinitializer)",
-            mangle_method_name(
+            mangle::mangle_method_name(
                 class_name,
                 "main",
                 &ReturnTypeDescriptor::Void,
@@ -107,7 +108,11 @@ impl ClassCodeGen {
 
     pub(crate) fn gen_vtable_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
-        writeln!(self.out, "%vtable.{} = type {{", mangle(class_name))?;
+        writeln!(
+            self.out,
+            "%{} = type {{",
+            mangle::mangle_vtable_name(class_name)
+        )?;
         for (idx, (key, _)) in vtable.iter().enumerate() {
             let ftyp = tlt_function_type(&key.method_descriptor);
             write!(self.out, "  {} *", ftyp)?;
@@ -125,19 +130,19 @@ impl ClassCodeGen {
 
     pub(crate) fn gen_vtable_const(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
-        let mangled_class_name = mangle(class_name);
+        let vtable_name = mangle::mangle_vtable_name(class_name);
 
         writeln!(
             self.out,
-            "@vtable.{} = constant %vtable.{} {{",
-            mangled_class_name, mangled_class_name
+            "@{vtable} = constant %{vtable} {{",
+            vtable = vtable_name
         )?;
         for (idx, (key, target)) in vtable.iter().enumerate() {
             write!(
                 self.out,
                 "  {} * @{}",
                 tlt_function_type(&key.method_descriptor),
-                mangle_method_name(
+                mangle::mangle_method_name(
                     &target.class_name,
                     &key.method_name,
                     &key.method_descriptor.ret,
@@ -166,7 +171,7 @@ impl ClassCodeGen {
                 self.out,
                 "declare {return_type} @{mangled_name}(",
                 return_type = tlt_return_type(&key.method_descriptor.ret),
-                mangled_name = mangle_method_name(
+                mangled_name = mangle::mangle_method_name(
                     &target.class_name,
                     &key.method_name,
                     &key.method_descriptor.ret,
@@ -185,12 +190,12 @@ impl ClassCodeGen {
 
     pub(crate) fn gen_extern_decls(&mut self, class: &ClassFile) -> Fallible<()> {
         let class_name = class.get_name();
-        let manged_class_name = mangle(class_name);
+        let vtable_name = mangle::mangle_vtable_name(class_name);
 
         writeln!(
             self.out,
-            "@vtable.{class} = external global %vtable.{class}",
-            class = manged_class_name
+            "@{vtable} = external global %{vtable}",
+            vtable = vtable_name
         )?;
 
         for method in class.methods.iter() {
@@ -204,7 +209,7 @@ impl ClassCodeGen {
                 self.out,
                 "declare {return_type} @{mangled_name}(",
                 return_type = tlt_return_type(&method.descriptor.ret),
-                mangled_name = mangle_method_name(
+                mangled_name = mangle::mangle_method_name(
                     class_name,
                     method_name,
                     &method.descriptor.ret,
@@ -222,15 +227,15 @@ impl ClassCodeGen {
             let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
             writeln!(
                 self.out,
-                "declare {field_type} @{mangled_name}__get(%ref)",
+                "declare {field_type} @{mangled_name}(%ref)",
                 field_type = tlt_field_type(&field.descriptor),
-                mangled_name = mangle_field_name(class_name, field_name)
+                mangled_name = mangle::mangle_field_name_getter(class_name, field_name)
             )?;
             writeln!(
                 self.out,
-                "declare void @{mangled_name}__set(%ref, {field_type})",
+                "declare void @{mangled_name}(%ref, {field_type})",
                 field_type = tlt_field_type(&field.descriptor),
-                mangled_name = mangle_field_name(class_name, field_name)
+                mangled_name = mangle::mangle_field_name_setter(class_name, field_name)
             )?;
         }
 
@@ -291,7 +296,7 @@ impl ClassCodeGen {
             self.out,
             "\ndefine {return_type} @{mangled_name}(",
             return_type = tlt_return_type(&method.descriptor.ret),
-            mangled_name = mangle_method_name(
+            mangled_name = mangle::mangle_method_name(
                 class_name,
                 method_name,
                 &method.descriptor.ret,
@@ -403,7 +408,7 @@ impl ClassCodeGen {
             }
             Expr::New(class_name) => {
                 if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%vtable.{class}* @vtable.{class} to i8*), 1", dest_var.1, class = mangle(class_name))?;
+                    writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%{vtable}* @{vtable} to i8*), 1", dest_var.1, vtable = mangle::mangle_vtable_name(class_name))?;
                 }
             }
             _ => bail!("unknown expression {:?}", expr),
@@ -442,7 +447,7 @@ impl ClassCodeGen {
         let method_name = consts.get_utf8(method_ref.name_index).unwrap();
         let method_class = consts.get_class(method_ref.class_index).unwrap();
         let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
-        let mangled_method_class_name = mangle(method_class_name);
+        let vtable_name = mangle::mangle_vtable_name(method_class_name);
 
         /*
         %v9vtblraw = extractvalue %ref %v9, 1
@@ -468,17 +473,17 @@ impl ClassCodeGen {
                 let tmp_vtbl = self.var_id_gen.gen();
                 writeln!(
                     self.out,
-                    "  %t{vtbl} = bitcast i8* %t{vtblraw} to %vtable.{class}*",
-                    class = mangled_method_class_name,
+                    "  %t{vtbl} = bitcast i8* %t{vtblraw} to %{vtblnm}*",
+                    vtblnm = vtable_name,
                     vtbl = tmp_vtbl,
                     vtblraw = tmp_vtblraw
                 )?;
                 let tmp_fptrptr = self.var_id_gen.gen();
                 writeln!(
                     self.out,
-                    "  %t{fptrptr} = getelementptr %vtable.{class}, %vtable.{class}* %t{vtbl}, i64 0, i32 {offset}",
+                    "  %t{fptrptr} = getelementptr %{vtblnm}, %{vtblnm}* %t{vtbl}, i64 0, i32 {offset}",
                     offset = offset,
-                    class = mangled_method_class_name,
+                    vtblnm = vtable_name,
                     vtbl = tmp_vtbl,
                     fptrptr = tmp_fptrptr
                 )?;
@@ -496,7 +501,7 @@ impl ClassCodeGen {
             }
             _ => format!(
                 "@{}",
-                mangle_method_name(
+                mangle::mangle_method_name(
                     method_class_name,
                     method_name,
                     &method_ref.descriptor.ret,
@@ -555,10 +560,10 @@ impl ClassCodeGen {
         if let Dest::Assign(dest_var) = dest {
             writeln!(
                 self.out,
-                "  %v{} = call {field_type} @{mangled_name}__get(%ref zeroinitializer)",
+                "  %v{} = call {field_type} @{mangled_name}(%ref zeroinitializer)",
                 dest_var.1,
                 field_type = tlt_field_type(&field_ref.descriptor),
-                mangled_name = mangle_field_name(field_class_name, field_name)
+                mangled_name = mangle::mangle_field_name_getter(field_class_name, field_name)
             )?;
         }
         Ok(())
@@ -599,49 +604,6 @@ impl TmpVarIdGen {
         self.next_id += 1;
         var_id
     }
-}
-
-fn mangle_field_name(class_name: &str, field_name: &str) -> String {
-    format!("_Jf_{}_{}", class_name.replace("/", "_"), field_name)
-}
-
-fn mangle_method_name(
-    class_name: &str,
-    method_name: &str,
-    rettype: &ReturnTypeDescriptor,
-    params: &[ParameterDescriptor],
-) -> String {
-    let mangled_class_name = mangle(class_name);
-    let mangled_method_name = match method_name {
-        "<init>" => "_init".to_owned(),
-        "<clinit>" => "_clinit".to_owned(),
-        _ => mangle(method_name),
-    };
-    let mut mangled = format!("_Jm_{}_{}", mangled_class_name, mangled_method_name);
-    mangled.push_str("__");
-    match rettype {
-        ReturnTypeDescriptor::Void => mangled.push_str("Z"),
-        ReturnTypeDescriptor::Field(field_type) => {
-            mangled.push_str(&mangle(&field_type.to_string()))
-        }
-    };
-    if params.len() > 0 {
-        mangled.push_str("__");
-        for ParameterDescriptor::Field(field_type) in params {
-            mangled.push_str(&mangle(&field_type.to_string()));
-        }
-    }
-    return mangled;
-}
-
-fn mangle(input: &str) -> String {
-    let mut output = input.to_owned();
-    output = output.replace("_", "_1");
-    output = output.replace(";", "_2");
-    output = output.replace("[", "_3");
-    output = output.replace("/", "_");
-    output = output.replace(".", "_");
-    return output;
 }
 
 fn tlt_function_type(descr: &MethodDescriptor) -> String {

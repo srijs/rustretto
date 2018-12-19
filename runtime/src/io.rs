@@ -1,3 +1,5 @@
+use libc::c_char;
+
 use super::Ref;
 
 #[repr(C)]
@@ -8,5 +10,9 @@ pub(crate) struct VTablePrintStream {
 
 pub(crate) static VTABLE_PRINTSTREAM: &VTablePrintStream = &VTablePrintStream {
     padding: [0; 40],
-    println_string: crate::stubs::_Jm_java_io_PrintStream_println__Z__Ljava_lang_String_2,
+    println_string: printstream_println_string_stub,
 };
+
+unsafe extern "C" fn printstream_println_string_stub(_this: Ref, string: Ref) {
+    libc::puts(string.object as *const c_char);
+}

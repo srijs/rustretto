@@ -1,27 +1,26 @@
 use std::ptr;
 
-use libc::{c_char, c_void};
+use libc::c_void;
 
 use super::Ref;
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object__init__Z(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object4initIu9Jc7c6d146EEvv(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_registerNatives__Z(_this: Ref) {}
-
-#[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_getClass__Ljava_lang_Class_2(_this: Ref) -> Ref {
+pub unsafe extern "C" fn _ZN4java4lang6Object8getClassIu9Jd57352f6EEN4java4lang5ClassEv(
+    _this: Ref,
+) -> Ref {
     Ref::null()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_hashCode__I(_this: Ref) -> i32 {
+pub unsafe extern "C" fn _ZN4java4lang6Object8hashCodeIu9J7c7c3589EEiv(_this: Ref) -> i32 {
     0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_equals__Z__Ljava_lang_Object_2(
+pub unsafe extern "C" fn _ZN4java4lang6Object6equalsIu9J70818185EEu7booleanN4java4lang6ObjectE(
     _this: Ref,
     _other: Ref,
 ) -> i32 {
@@ -29,49 +28,42 @@ pub unsafe extern "C" fn _Jm_java_lang_Object_equals__Z__Ljava_lang_Object_2(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_clone__Ljava_lang_Object_2(_this: Ref) -> Ref {
+pub unsafe extern "C" fn _ZN4java4lang6Object5cloneIu9J117cf78dEEN4java4lang6ObjectEv(
+    _this: Ref,
+) -> Ref {
     Ref::null()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_toString__Ljava_lang_String_2(_this: Ref) -> Ref {
+pub unsafe extern "C" fn _ZN4java4lang6Object8toStringIu9J7da86304EEN4java4lang6StringEv(
+    _this: Ref,
+) -> Ref {
     Ref::null()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_notify__Z(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object6notifyIu9Jec9f6595EEvv(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_notifyAll__Z(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object9notifyAllIu9J01f1085cEEvv(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_wait__Z__J(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object4waitIu9J70446489EEvl(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_wait__Z__JI(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object4waitIu9J70446489EEvli(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_wait__Z(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object4waitIu9J70446489EEvv(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object_finalize__Z(_this: Ref) {}
+pub unsafe extern "C" fn _ZN4java4lang6Object8finalizeIu9J4558e90cEEvv(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jm_java_lang_Object__clinit__Z(_this: Ref) {}
-
-#[no_mangle]
-pub unsafe extern "C" fn _Jf_java_lang_System_out__get(_this: Ref) -> Ref {
+pub unsafe extern "C" fn _ZN4java4lang6System3outv03getE(_this: Ref) -> Ref {
     Ref {
         object: ptr::null(),
         vtable: crate::io::VTABLE_PRINTSTREAM as *const crate::io::VTablePrintStream
             as *const c_void,
     }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn _Jm_java_io_PrintStream_println__Z__Ljava_lang_String_2(
-    _this: Ref,
-    string: Ref,
-) {
-    libc::puts(string.object as *const c_char);
 }
