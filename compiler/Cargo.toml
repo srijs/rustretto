@@ -8,6 +8,7 @@ edition = "2018"
 env_logger = { version = "0.5.13", default-features = false }
 failure = "0.1.2"
 fnv = "1.0.6"
+idna = "0.1.5"
 indexmap = "1.0.2"
 log = "0.4.6"
 petgraph = "0.4.13"

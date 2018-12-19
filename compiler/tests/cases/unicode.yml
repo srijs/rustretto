@@ -1,0 +1,11 @@
+source: |
+    public class Test {
+        static void fooαρετηbar() {
+            System.out.println("🔥🔥🔥");
+        }
+
+        public static void main(String[] args) {
+            fooαρετηbar();
+        }
+    }
+output: "🔥🔥🔥\n"

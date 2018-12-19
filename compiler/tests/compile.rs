@@ -3,6 +3,7 @@ mod utils;
 
 cases! {
     println,
+    unicode,
     for_loop,
     if_else,
     inheritance,

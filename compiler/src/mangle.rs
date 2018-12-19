@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 
 use classfile::descriptors::{BaseType, FieldType, ParameterDescriptor, ReturnTypeDescriptor};
 use fnv::FnvHasher;
+use idna::punycode;
 
 pub fn mangle_field_name_setter(class_name: &str, field_name: &str) -> String {
     mangle_field_accessor(class_name, field_name, true)
@@ -111,7 +112,10 @@ impl Mangler {
     }
 
     fn name(&mut self, name: &str) {
-        write!(self.output, "{}{}", name.len(), name).unwrap();
+        let mangled = punycode::encode_str(name).unwrap();
+        let trimmed = mangled.trim_end_matches('-');
+        let replaced = trimmed.replace('-', "$");
+        write!(self.output, "{}{}", replaced.len(), replaced).unwrap();
     }
 
     fn field_type(&mut self, mut field_type: &FieldType) {
