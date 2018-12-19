@@ -39,7 +39,7 @@ impl TestCase {
         srcfile.write_all(self.source.as_bytes()).unwrap();
         srcfile.sync_all().unwrap();
 
-        Assert::command(&["javac", "Test.java"])
+        Assert::command(&["javac", "-encoding", "utf8", "Test.java"])
             .current_dir(&tmppath)
             .unwrap();
 
