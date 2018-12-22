@@ -155,7 +155,7 @@ impl Mangler {
 mod tests {
     use super::*;
     use classfile::descriptors::{
-        BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
+        ArrayType, BaseType, FieldType, ObjectType, ParameterDescriptor, ReturnTypeDescriptor,
     };
     use cpp_demangle::Symbol;
     use regex::Regex;
@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn method_name_with_single_parameter() {
+    fn method_name_with_object_parameter() {
         let mangled = mangle_method_name(
             "java/lang/Object",
             "equals",
@@ -196,6 +196,25 @@ mod tests {
 
         assert_demangle_match!(
             r"^boolean java::lang::Object::equals<J[[:xdigit:]]+>\(java::lang::Object\)$",
+            mangled
+        );
+    }
+
+    #[test]
+    fn method_name_with_array_parameter() {
+        let mangled = mangle_method_name(
+            "java/util/Arrays",
+            "hashCode",
+            &ReturnTypeDescriptor::Field(FieldType::Base(BaseType::Int)),
+            &[ParameterDescriptor::Field(FieldType::Array(ArrayType {
+                component_type: Box::new(FieldType::Object(ObjectType {
+                    class_name: "java.lang.Object".to_owned(),
+                })),
+            }))],
+        );
+
+        assert_demangle_match!(
+            r"^int java::util::Arrays::hashCode<J[[:xdigit:]]+>\(java::lang::Object \[\]\)$",
             mangled
         );
     }
