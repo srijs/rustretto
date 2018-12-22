@@ -5,9 +5,5 @@ cache:
     - $HOME/.cargo
     - $TRAVIS_BUILD_DIR/target
 
-before_script:
-  # install rust -- replace this once nixpkgs updates `rustc` to 1.31.0
-  - curl https://sh.rustup.rs -sSf | sh -s -- -y
-
 script:
   - nix-shell --pure --run "source $HOME/.cargo/env && cargo build --release -p runtime && cargo test"

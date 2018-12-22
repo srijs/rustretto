@@ -1,4 +1,7 @@
-with import <nixpkgs> {};
+let
+  moz_overlay = import (builtins.fetchTarball https://github.com/mozilla/nixpkgs-mozilla/archive/master.tar.gz);
+in
+  with import <nixpkgs> { overlays = [ moz_overlay ]; };
 
 stdenv.mkDerivation rec {
   name = "env";
@@ -10,5 +13,10 @@ stdenv.mkDerivation rec {
     then [ darwin.apple_sdk.frameworks.Security ]
     else [ ];
 
-  buildInputs = platformBuildInputs ++ [ llvm_7 openjdk8 ];
+  buildInputs = platformBuildInputs ++ [
+    latest.rustChannels.stable.rust
+
+    llvm_7
+    openjdk8
+  ];
 }
