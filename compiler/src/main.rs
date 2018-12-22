@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use failure::{format_err, Fallible};
 use structopt::StructOpt;
+use target_lexicon::Triple;
 
 mod blocks;
 mod classes;
@@ -14,7 +15,6 @@ mod frame;
 mod generate;
 mod loader;
 mod mangle;
-mod target;
 mod translate;
 mod types;
 mod vtable;
@@ -49,10 +49,9 @@ fn compile(c: Compile) -> Fallible<()> {
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
-    let platform = platforms::guess_current()
-        .ok_or_else(|| format_err!("could not determine host platform"))?;
+    let triple = Triple::host();
 
-    let mut driver = Driver::new(home, platform.clone(), c.optimize)?;
+    let mut driver = Driver::new(home, triple, c.optimize)?;
 
     driver.compile(&c.main, &c.inputs)?;
 

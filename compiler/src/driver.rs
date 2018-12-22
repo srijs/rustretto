@@ -8,26 +8,24 @@ use std::sync::Arc;
 use classfile::ClassFile;
 use failure::{bail, Fallible};
 use llvm;
-use platforms::Platform;
+use target_lexicon::{OperatingSystem, Triple};
 
 use crate::classes::ClassGraph;
 use crate::compile::Compiler;
 use crate::generate::CodeGen;
 use crate::loader::BootstrapClassLoader;
-use crate::target::Target;
 
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,
-    target: Target,
+    target_triple: Triple,
     optimize: bool,
     modules: HashMap<String, String>,
     machine: Arc<llvm::codegen::TargetMachine>,
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, platform: Platform, optimize: bool) -> Fallible<Self> {
+    pub fn new(home: PathBuf, target_triple: Triple, optimize: bool) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
-        let target = Target::new(platform);
         let modules = HashMap::new();
 
         let mut machine_builder = llvm::codegen::TargetMachine::builder();
@@ -39,7 +37,7 @@ impl Driver {
 
         Ok(Driver {
             loader,
-            target,
+            target_triple,
             optimize,
             modules,
             machine,
@@ -114,8 +112,8 @@ impl Driver {
         cmd.arg("-o");
         cmd.arg(output_path);
 
-        match self.target.os() {
-            "macos" => {
+        match self.target_triple.operating_system {
+            OperatingSystem::Darwin => {
                 let triple = self.machine.triple();
                 let (major, minor, micro) = triple.get_macosx_version();
                 cmd.arg(format!(
