@@ -112,6 +112,7 @@ impl Driver {
         cmd.arg(runtime_path);
         cmd.arg("-o");
         cmd.arg(output_path);
+        cmd.args(&["-lpthread", "-ldl"]);
 
         match self.target_triple.operating_system {
             OperatingSystem::Darwin => {
