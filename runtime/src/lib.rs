@@ -22,9 +22,10 @@ impl Ref {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jrt_throw(_throwable: Ref) -> Ref {
-    println!("Exception: {:?}", Backtrace::new());
-    std::process::abort();
+pub unsafe extern "C" fn _Jrt_throw(_throwable: Ref) {
+    let backtrace = Backtrace::new();
+    println!("Exception {:?}", backtrace);
+    std::process::exit(1);
 }
 
 #[no_mangle]

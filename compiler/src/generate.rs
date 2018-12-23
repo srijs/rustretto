@@ -267,7 +267,7 @@ impl ClassCodeGen {
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
 
-        writeln!(self.out, "declare %ref @_Jrt_throw(%ref)")?;
+        writeln!(self.out, "declare void @_Jrt_throw(%ref) noreturn")?;
         writeln!(self.out, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
 
         for index in self.class.constant_pool.indices() {
@@ -360,6 +360,14 @@ impl ClassCodeGen {
             }
             BranchStub::IfACmp(comp, var1, var2, if_addr, else_addr) => {
                 self.gen_acmp(comp, var1, var2, *if_addr, *else_addr)?
+            }
+            BranchStub::Throw(var) => {
+                writeln!(
+                    self.out,
+                    "  call void @_Jrt_throw(%ref %v{}) noreturn",
+                    var.1
+                )?;
+                writeln!(self.out, "  unreachable")?;
             }
         }
         Ok(())
@@ -508,15 +516,6 @@ impl ClassCodeGen {
             Expr::New(class_name) => {
                 if let Dest::Assign(dest_var) = dest {
                     writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%{vtable}* @{vtable} to i8*), 1", dest_var.1, vtable = mangle::mangle_vtable_name(class_name))?;
-                }
-            }
-            Expr::Throw(var) => {
-                if let Dest::Assign(dest_var) = dest {
-                    writeln!(
-                        self.out,
-                        "  %v{} = call %ref @_Jrt_throw(%ref %v{}) noreturn",
-                        dest_var.1, var.1
-                    )?;
                 }
             }
             _ => bail!("unknown expression {:?}", expr),

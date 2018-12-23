@@ -98,7 +98,6 @@ pub(crate) enum Expr {
     New(StrBuf),
     LCmp(VarId, VarId),
     LAdd(VarId, VarId),
-    Throw(VarId),
 }
 
 #[derive(Debug)]
@@ -132,12 +131,7 @@ pub(crate) enum BranchStub {
     IfACmp(AComparator, VarId, VarId, BlockId, BlockId),
     Return(Option<VarId>),
     Switch(Switch),
-}
-
-#[derive(Debug)]
-enum Branch {
-    Return(Option<VarId>),
-    IfEq(VarId, BlockId, BlockId),
+    Throw(VarId),
 }
 
 #[derive(Debug)]
@@ -324,12 +318,7 @@ impl<'a> TranslateInstr<'a> {
 
     fn athrow(self) -> Fallible<Option<TranslateNext>> {
         let var = self.state.pop();
-        let new_var = self.var_id_gen.gen(var.0.clone());
-        let statement = Statement {
-            assign: Some(new_var),
-            expression: Expr::Throw(var),
-        };
-        return Ok(Some(TranslateNext::Statement(statement)));
+        return Ok(Some(TranslateNext::Branch(BranchStub::Throw(var), None)));
     }
 
     fn goto(self, offset: i16) -> Fallible<Option<TranslateNext>> {
@@ -564,7 +553,7 @@ pub(crate) fn translate_method(
                         remaining.push((*addr, block.outgoing.new_with_same_shape(var_id_gen)));
                     }
                 }
-
+                BranchStub::Throw(_) => {}
                 BranchStub::Return(_) => {}
             }
             blocks.insert(block);

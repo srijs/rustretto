@@ -41,7 +41,7 @@ impl InstructionBlock {
             log::trace!("decoded instruction {:?} at address {}", instr, curr_addr);
             let next_addr = disasm.position();
             let should_break = match instr {
-                Instr::Return | Instr::IReturn | Instr::AReturn => true,
+                Instr::Return | Instr::IReturn | Instr::AReturn | Instr::AThrow => true,
                 Instr::Goto(offset) => {
                     let addr = (curr_addr as i64 + offset as i64) as u32;
                     start_addrs.push(addr);
@@ -104,11 +104,14 @@ pub struct InstructionBlockMap {
 
 impl InstructionBlockMap {
     pub fn block_starting_at(&self, addr: u32) -> &InstructionBlock {
-        let index = self
+        let index_opt = self
             .blocks
-            .binary_search_by_key(&addr, |block| block.range.start)
-            .unwrap();
-        &self.blocks[index]
+            .binary_search_by_key(&addr, |block| block.range.start);
+        if let Ok(index) = index_opt {
+            &self.blocks[index]
+        } else {
+            panic!("could not find block starting at addr {}", addr)
+        }
     }
 
     pub fn build(mut disasm: Disassembler) -> Fallible<Self> {
