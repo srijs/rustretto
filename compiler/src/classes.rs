@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use failure::Fallible;
 use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::StableGraph;
+use strbuf::StrBuf;
 
 use crate::loader::{ArrayClass, Class, ClassLoader};
 
@@ -15,18 +16,18 @@ enum Relation {
 
 struct Inner {
     graph: StableGraph<Class, Relation>,
-    name_map: HashMap<String, NodeIndex>,
+    name_map: HashMap<StrBuf, NodeIndex>,
 }
 
 impl Inner {
     fn add_class(
         &mut self,
-        name: &str,
+        name: &StrBuf,
         class: Class,
         loader: &dyn ClassLoader,
     ) -> Fallible<NodeIndex> {
         let index = self.graph.add_node(class.clone());
-        self.name_map.insert(name.to_owned(), index);
+        self.name_map.insert(name.clone(), index);
 
         match class {
             Class::Array(ArrayClass::Primitive(_)) => {}
@@ -71,7 +72,7 @@ impl ClassGraph {
         }
     }
 
-    pub fn get(&self, name: &str) -> Fallible<Class> {
+    pub fn get(&self, name: &StrBuf) -> Fallible<Class> {
         let mut inner = self.inner.lock().unwrap();
         if let Some(idx) = inner.name_map.get(name).cloned() {
             Ok(inner.graph[idx].clone())

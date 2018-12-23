@@ -42,7 +42,7 @@ impl CodeGen {
         })
     }
 
-    pub fn generate_class(&self, name: &str) -> Fallible<ClassCodeGen> {
+    pub fn generate_class(&self, name: &StrBuf) -> Fallible<ClassCodeGen> {
         let class = match self.classes.get(name)? {
             Class::File(class_file) => class_file,
             _ => bail!("can't generate code for array class"),

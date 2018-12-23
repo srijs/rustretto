@@ -47,7 +47,7 @@ impl Driver {
     pub fn compile(&mut self, main: &str, inputs: &[PathBuf]) -> Fallible<()> {
         let mut loader = InputClassLoader::new(self.loader.clone());
 
-        let mut class_names = vec![];
+        let mut class_names = vec!["java/lang/Object".to_owned().into()];
         for input in inputs {
             let file = fs::File::open(input)?;
             let class_file = ClassFile::parse(file)?;
@@ -71,7 +71,7 @@ impl Driver {
 
     pub fn dump(&self, path: &Path) -> Fallible<()> {
         for (name, module) in self.modules.iter() {
-            let filename = format!("{}.ll", name.replace("/", "_"));
+            let filename = format!("{}.ll", name.replace("/", "."));
             let mut file = fs::File::create(path.join(filename))?;
             file.write_all(module.as_bytes())?;
         }

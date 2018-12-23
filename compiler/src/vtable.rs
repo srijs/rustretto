@@ -122,7 +122,7 @@ impl VTableMap {
 
     fn build_table(
         &self,
-        name: &str,
+        name: &StrBuf,
         table: &mut IndexMap<MethodDispatchKey, MethodDispatchTarget>,
     ) -> Fallible<()> {
         let classfile = match self.classes.get(name)? {
