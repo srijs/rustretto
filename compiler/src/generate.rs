@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::sync::Arc;
 
 use classfile::attrs::SourceFile;
@@ -18,7 +18,7 @@ use crate::loader::Class;
 use crate::mangle;
 use crate::translate::{
     AComparator, BasicBlock, BlockId, BranchStub, Const, Expr, IComparator, InvokeExpr,
-    InvokeTarget, Statement, Switch, VarId,
+    InvokeTarget, Op, Statement, Switch, VarId,
 };
 use crate::types::Type;
 use crate::vtable::VTableMap;
@@ -324,7 +324,7 @@ impl ClassCodeGen {
             if i > 0 {
                 write!(self.out, ", ")?;
             }
-            write!(self.out, "{} %v{}", tlt_type(&var.0), var.1)?;
+            write!(self.out, "{} {}", tlt_type(&var.get_type()), OpVal(var))?;
         }
         writeln!(self.out, ") {{")?;
         for block in blocks.blocks() {
@@ -349,14 +349,19 @@ impl ClassCodeGen {
             BranchStub::Goto(addr) => writeln!(self.out, "  br label %B{}", addr)?,
             BranchStub::Return(ret_opt) => {
                 if let Some(ret) = ret_opt {
-                    writeln!(self.out, "  ret {} %v{}", tlt_type(&ret.0), ret.1)?;
+                    writeln!(
+                        self.out,
+                        "  ret {} {}",
+                        tlt_type(&ret.get_type()),
+                        OpVal(ret)
+                    )?;
                 } else {
                     writeln!(self.out, "  ret void")?;
                 }
             }
             BranchStub::Switch(switch) => self.gen_switch(switch)?,
-            BranchStub::IfICmp(comp, var1, var2_opt, if_addr, else_addr) => {
-                self.gen_icmp(comp, var1, var2_opt, *if_addr, *else_addr)?
+            BranchStub::IfICmp(comp, var1, var2, if_addr, else_addr) => {
+                self.gen_icmp(comp, var1, var2, *if_addr, *else_addr)?
             }
             BranchStub::IfACmp(comp, var1, var2, if_addr, else_addr) => {
                 self.gen_acmp(comp, var1, var2, *if_addr, *else_addr)?
@@ -364,8 +369,8 @@ impl ClassCodeGen {
             BranchStub::Throw(var) => {
                 writeln!(
                     self.out,
-                    "  call void @_Jrt_throw(%ref %v{}) noreturn",
-                    var.1
+                    "  call void @_Jrt_throw(%ref {}) noreturn",
+                    OpVal(var)
                 )?;
                 writeln!(self.out, "  unreachable")?;
             }
@@ -376,8 +381,8 @@ impl ClassCodeGen {
     fn gen_icmp(
         &mut self,
         comp: &IComparator,
-        var1: &VarId,
-        var2_opt: &Option<VarId>,
+        var1: &Op,
+        var2: &Op,
         if_addr: BlockId,
         else_addr: BlockId,
     ) -> Fallible<()> {
@@ -388,19 +393,14 @@ impl ClassCodeGen {
             IComparator::Le => "sle",
             IComparator::Lt => "slt",
         };
-        if let Some(var2) = var2_opt {
-            writeln!(
-                self.out,
-                "  %tmp{} = icmp {} i32 %v{}, %v{}",
-                tmpid, code, var1.1, var2.1
-            )?;
-        } else {
-            writeln!(
-                self.out,
-                "  %tmp{} = icmp {} i32 0, %v{}",
-                tmpid, code, var1.1
-            )?;
-        }
+        writeln!(
+            self.out,
+            "  %tmp{} = icmp {} i32 {}, {}",
+            tmpid,
+            code,
+            OpVal(var1),
+            OpVal(var2)
+        )?;
         writeln!(
             self.out,
             "  br i1 %tmp{}, label %B{}, label %B{}",
@@ -412,23 +412,23 @@ impl ClassCodeGen {
     fn gen_acmp(
         &mut self,
         comp: &AComparator,
-        var1: &VarId,
-        var2: &VarId,
+        var1: &Op,
+        var2: &Op,
         if_addr: BlockId,
         else_addr: BlockId,
     ) -> Fallible<()> {
         let tmp_ptr1 = self.var_id_gen.gen();
         writeln!(
             self.out,
-            "  %t{ptr} = extractvalue %ref %v{var}, 0",
-            var = var1.1,
+            "  %t{ptr} = extractvalue %ref {op}, 0",
+            op = OpVal(var1),
             ptr = tmp_ptr1
         )?;
         let tmp_ptr2 = self.var_id_gen.gen();
         writeln!(
             self.out,
-            "  %t{ptr} = extractvalue %ref %v{var}, 0",
-            var = var2.1,
+            "  %t{ptr} = extractvalue %ref {op}, 0",
+            op = OpVal(var2),
             ptr = tmp_ptr2
         )?;
 
@@ -454,8 +454,9 @@ impl ClassCodeGen {
     fn gen_switch(&mut self, switch: &Switch) -> Fallible<()> {
         write!(
             self.out,
-            "  switch i32 %v{}, label %B{} [",
-            switch.value.1, switch.default
+            "  switch i32 {}, label %B{} [",
+            OpVal(&switch.value),
+            switch.default
         )?;
         for (value, addr) in switch.cases.iter() {
             write!(self.out, " i32 {}, label %B{}", value, addr)?;
@@ -476,42 +477,18 @@ impl ClassCodeGen {
 
     fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool, dest: Dest) -> Fallible<()> {
         match expr {
-            Expr::Const(Const::Int(i)) => {
-                if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.out, "  %v{} = and i32 {}, {}", dest_var.1, i, i)?;
-                }
-            }
-            Expr::Const(Const::Long(i)) => {
-                if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.out, "  %v{} = and i64 {}, {}", dest_var.1, i, i)?;
-                }
-            }
-            Expr::Const(Const::String(index)) => self.gen_load_string(*index, consts, dest)?,
-            Expr::Const(Const::Null) => {
-                if let Dest::Assign(dest_var) = dest {
-                    writeln!(
-                        self.out,
-                        "  %v{} = insertvalue %ref zeroinitializer, i8* zeroinitializer, 1",
-                        dest_var.1
-                    )?;
-                }
-            }
+            Expr::String(index) => self.gen_load_string(*index, consts, dest)?,
             Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts, dest)?,
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
-            Expr::IInc(var, i) => {
-                if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.out, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
-                }
-            }
             Expr::Add(var1, var2) => {
                 if let Dest::Assign(dest_var) = dest {
                     writeln!(
                         self.out,
-                        "  %v{} = add {} %v{}, %v{}",
+                        "  %v{} = add {} {}, {}",
                         dest_var.1,
                         tlt_type(&dest_var.0),
-                        var1.1,
-                        var2.1
+                        OpVal(var1),
+                        OpVal(var2)
                     )?;
                 }
             }
@@ -521,7 +498,6 @@ impl ClassCodeGen {
                     writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%{vtable}* @{vtable} to i8*), 1", dest_var.1, vtable = mangle::mangle_vtable_name(class_name))?;
                 }
             }
-            _ => bail!("unknown expression {:?}", expr),
         }
         Ok(())
     }
@@ -559,14 +535,6 @@ impl ClassCodeGen {
         let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
         let vtable_name = mangle::mangle_vtable_name(method_class_name);
 
-        /*
-        %v9vtblraw = extractvalue %ref %v9, 1
-        %v9vtbl = bitcast i8* %v9vtblraw to %vtable.java_io_PrintStream*
-        %v9fptrptr = getelementptr %vtable.java_io_PrintStream, %vtable.java_io_PrintStream* %v9vtbl, i64 0, i32 13
-        %v9fptr = load void (%ref, %ref)*, void (%ref, %ref)** %v9fptrptr
-        call void %v9fptr(%ref %v9, %ref %v10)
-        */
-
         let fptr = match expr.target {
             InvokeTarget::Virtual(ref var) => {
                 let vtable = self.vtables.get(method_class_name)?;
@@ -576,8 +544,8 @@ impl ClassCodeGen {
                 let tmp_vtblraw = self.var_id_gen.gen();
                 writeln!(
                     self.out,
-                    "  %t{vtblraw} = extractvalue %ref %v{}, 1",
-                    var.1,
+                    "  %t{vtblraw} = extractvalue %ref {}, 1",
+                    OpVal(var),
                     vtblraw = tmp_vtblraw
                 )?;
                 let tmp_vtbl = self.var_id_gen.gen();
@@ -637,12 +605,12 @@ impl ClassCodeGen {
 
         match expr.target {
             InvokeTarget::Static => {}
-            InvokeTarget::Special(ref var) => args.push(format!("%ref %v{}", var.1)),
-            InvokeTarget::Virtual(ref var) => args.push(format!("%ref %v{}", var.1)),
+            InvokeTarget::Special(ref var) => args.push(format!("%ref {}", OpVal(var))),
+            InvokeTarget::Virtual(ref var) => args.push(format!("%ref {}", OpVal(var))),
         };
 
         for var in expr.args.iter() {
-            args.push(format!("{} %v{}", tlt_type(&var.0), var.1));
+            args.push(format!("{} {}", tlt_type(&var.get_type()), OpVal(&var)));
         }
 
         for (idx, arg) in args.iter().enumerate() {
@@ -687,27 +655,31 @@ impl ClassCodeGen {
                 if i > 0 {
                     write!(self.out, ", ")?;
                 }
-                write!(self.out, "[ %v{}, %B{} ]", out_var.1, addr)?;
+                write!(self.out, "[ {}, %B{} ]", OpVal(out_var), addr)?;
             }
             writeln!(self.out, "")?;
         }
         Ok(())
     }
 
-    fn gen_cmp_long(&mut self, var1: &VarId, var2: &VarId, dest: Dest) -> Fallible<()> {
+    fn gen_cmp_long(&mut self, var1: &Op, var2: &Op, dest: Dest) -> Fallible<()> {
         let tmp_lt = self.var_id_gen.gen();
         writeln!(
             self.out,
-            "  %t{} = icmp slt i64 %v{}, %v{}",
-            tmp_lt, var1.1, var2.1
+            "  %t{} = icmp slt i64 {}, {}",
+            tmp_lt,
+            OpVal(var1),
+            OpVal(var2)
         )?;
         let tmp_lt_ext = self.var_id_gen.gen();
         writeln!(self.out, "  %t{} = zext i1 %t{} to i32", tmp_lt_ext, tmp_lt)?;
         let tmp_gt = self.var_id_gen.gen();
         writeln!(
             self.out,
-            "  %t{} = icmp sgt i64 %v{}, %v{}",
-            tmp_gt, var1.1, var2.1
+            "  %t{} = icmp sgt i64 {}, {}",
+            tmp_gt,
+            OpVal(var1),
+            OpVal(var2)
         )?;
         let tmp_gt_ext = self.var_id_gen.gen();
         writeln!(self.out, "  %t{} = zext i1 %t{} to i32", tmp_gt_ext, tmp_gt)?;
@@ -715,7 +687,7 @@ impl ClassCodeGen {
             writeln!(
                 self.out,
                 "  %v{} = sub i32 %t{}, %t{}",
-                dest_var.1, tmp_lt_ext, tmp_gt_ext
+                dest_var.1, tmp_gt_ext, tmp_lt_ext
             )?;
         }
         Ok(())
@@ -792,6 +764,21 @@ impl TmpVarIdGen {
         let var_id = self.next_id;
         self.next_id += 1;
         var_id
+    }
+}
+
+struct OpVal<'a>(&'a Op);
+
+impl<'a> fmt::Display for OpVal<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Op::Var(v) => write!(f, "%v{}", v.1),
+            Op::Const(c) => match c {
+                Const::Int(i) => write!(f, "{}", i),
+                Const::Long(j) => write!(f, "{}", j),
+                Const::Null => write!(f, "zeroinitializer"),
+            },
+        }
     }
 }
 

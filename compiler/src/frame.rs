@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use crate::translate::{VarId, VarIdGen};
+use crate::translate::{Op, VarId, VarIdGen};
 use crate::types::Type;
 
 #[derive(Clone, Debug)]
 pub(crate) struct StackAndLocals {
-    pub stack: Vec<VarId>,
-    pub locals: BTreeMap<usize, VarId>,
+    pub stack: Vec<Op>,
+    pub locals: BTreeMap<usize, Op>,
 }
 
 impl StackAndLocals {
@@ -15,7 +15,7 @@ impl StackAndLocals {
         let mut locals = BTreeMap::new();
         let mut next_local_idx = 0;
         for arg in args.iter() {
-            locals.insert(next_local_idx, arg.clone());
+            locals.insert(next_local_idx, Op::Var(arg.clone()));
             // long and double occupy two local slots
             if arg.0 == Type::Long || arg.0 == Type::Double {
                 next_local_idx += 2;
@@ -30,26 +30,26 @@ impl StackAndLocals {
         let stack = self
             .stack
             .iter()
-            .map(|v| var_id_gen.gen(v.0.clone()))
+            .map(|v| Op::Var(var_id_gen.gen(v.get_type())))
             .collect();
         let locals = self
             .locals
             .iter()
-            .map(|(i, v)| (*i, var_id_gen.gen(v.0.clone())))
+            .map(|(i, v)| (*i, Op::Var(var_id_gen.gen(v.get_type()))))
             .collect();
         StackAndLocals { stack, locals }
     }
 
-    pub fn pop(&mut self) -> VarId {
+    pub fn pop(&mut self) -> Op {
         self.stack.pop().unwrap()
     }
 
-    pub fn pop_n(&mut self, n: usize) -> Vec<VarId> {
+    pub fn pop_n(&mut self, n: usize) -> Vec<Op> {
         let index = self.stack.len() - n;
         self.stack.split_off(index)
     }
 
-    pub fn push(&mut self, var: VarId) {
+    pub fn push(&mut self, var: Op) {
         self.stack.push(var);
     }
 
@@ -82,9 +82,9 @@ mod tests {
         ];
         let frame = StackAndLocals::new(0, 6, &args);
 
-        assert_eq!(frame.locals[&0], args[0]);
-        assert_eq!(frame.locals[&2], args[1]);
-        assert_eq!(frame.locals[&3], args[2]);
-        assert_eq!(frame.locals[&5], args[3]);
+        assert_eq!(frame.locals[&0].get_type(), Type::Long);
+        assert_eq!(frame.locals[&2].get_type(), Type::Integer);
+        assert_eq!(frame.locals[&3].get_type(), Type::Double);
+        assert_eq!(frame.locals[&5].get_type(), Type::Float);
     }
 }
