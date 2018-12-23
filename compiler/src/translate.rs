@@ -178,6 +178,10 @@ impl<'a> TranslateInstr<'a> {
         self.state.push(var);
     }
 
+    fn pop(&mut self, n: usize) {
+        self.state.pop_n(n);
+    }
+
     fn get_static(self, idx: u16) -> Fallible<Option<TranslateNext>> {
         let field = self
             .consts
@@ -455,6 +459,8 @@ fn translate_next(
             Instr::LLoad(idx) => t.load(*idx as usize),
             Instr::LStore(idx) => t.store(*idx as usize),
             Instr::Dup => t.duplicate(),
+            Instr::Pop => t.pop(1),
+            Instr::Pop2 => t.pop(2),
             Instr::IConst0 => return t.iconst(0),
             Instr::IConst1 => return t.iconst(1),
             Instr::IConst2 => return t.iconst(2),
