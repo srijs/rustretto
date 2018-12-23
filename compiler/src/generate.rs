@@ -496,6 +496,15 @@ impl ClassCodeGen {
                 }
             }
             Expr::Const(Const::String(index)) => self.gen_load_string(*index, consts, dest)?,
+            Expr::Const(Const::Null) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(
+                        self.out,
+                        "  %v{} = insertvalue %ref zeroinitializer, i8* zeroinitializer, 1",
+                        dest_var.1
+                    )?;
+                }
+            }
             Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts, dest)?,
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
             Expr::IInc(var, i) => {

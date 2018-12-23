@@ -86,6 +86,7 @@ pub(crate) enum Const {
     Int(i32),
     Long(i64),
     String(ConstantIndex),
+    Null,
 }
 
 #[derive(Debug)]
@@ -240,6 +241,16 @@ impl<'a> TranslateInstr<'a> {
         let statement = Statement {
             assign: Some(var),
             expression: Expr::Const(Const::Long(int)),
+        };
+        Ok(Some(TranslateNext::Statement(statement)))
+    }
+
+    fn aconst_null(self) -> Fallible<Option<TranslateNext>> {
+        let var = self.var_id_gen.gen(Type::Null);
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::Const(Const::Null),
         };
         Ok(Some(TranslateNext::Statement(statement)))
     }
@@ -449,6 +460,7 @@ fn translate_next(
             Instr::IConst3 => return t.iconst(3),
             Instr::LConst0 => return t.lconst(0),
             Instr::LConst1 => return t.lconst(1),
+            Instr::AConstNull => return t.aconst_null(),
             Instr::BiPush(b) => return t.iconst(*b as i32),
             Instr::IInc(idx, int) => return t.iinc(*idx, *int as i32),
             Instr::GetStatic(idx) => return t.get_static(*idx),
