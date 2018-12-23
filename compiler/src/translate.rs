@@ -98,7 +98,7 @@ pub(crate) enum Expr {
     IInc(VarId, i32),
     New(StrBuf),
     LCmp(VarId, VarId),
-    LAdd(VarId, VarId),
+    Add(VarId, VarId),
 }
 
 #[derive(Debug)]
@@ -267,14 +267,15 @@ impl<'a> TranslateInstr<'a> {
         Ok(Some(TranslateNext::Statement(statement)))
     }
 
-    fn ladd(self) -> Fallible<Option<TranslateNext>> {
+    fn add(self) -> Fallible<Option<TranslateNext>> {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
-        let var = self.var_id_gen.gen(Type::Long);
+        failure::ensure!(value1.0 == value2.0, "type mismatch");
+        let var = self.var_id_gen.gen(value1.0.clone());
         self.state.push(var.clone());
         let statement = Statement {
             assign: Some(var),
-            expression: Expr::LAdd(value1, value2),
+            expression: Expr::Add(value1, value2),
         };
         Ok(Some(TranslateNext::Statement(statement)))
     }
@@ -486,7 +487,8 @@ fn translate_next(
             Instr::TableSwitch(table) => return t.table_switch(table),
             Instr::LookupSwitch(lookup) => return t.lookup_switch(lookup),
             Instr::LCmp => return t.lcmp(),
-            Instr::LAdd => return t.ladd(),
+            Instr::LAdd => return t.add(),
+            Instr::IAdd => return t.add(),
             Instr::AThrow => return t.athrow(),
             _ => bail!("unsupported instruction {:?}", instr),
         }

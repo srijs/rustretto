@@ -503,12 +503,15 @@ impl ClassCodeGen {
                     writeln!(self.out, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
                 }
             }
-            Expr::LAdd(var1, var2) => {
+            Expr::Add(var1, var2) => {
                 if let Dest::Assign(dest_var) = dest {
                     writeln!(
                         self.out,
-                        "  %v{} = add i64 %v{}, %v{}",
-                        dest_var.1, var1.1, var2.1
+                        "  %v{} = add {} %v{}, %v{}",
+                        dest_var.1,
+                        tlt_type(&dest_var.0),
+                        var1.1,
+                        var2.1
                     )?;
                 }
             }
