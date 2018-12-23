@@ -48,6 +48,10 @@ impl Method {
     pub fn is_abstract(&self) -> bool {
         self.access_flags.contains(MethodAccessFlags::ABSTRACT)
     }
+
+    pub fn is_native(&self) -> bool {
+        self.access_flags.contains(MethodAccessFlags::NATIVE)
+    }
 }
 
 #[derive(Debug)]

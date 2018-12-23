@@ -93,7 +93,7 @@ impl VTable {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) struct VTableMap {
     classes: ClassGraph,
     inner: Arc<Mutex<HashMap<StrBuf, VTable>>>,

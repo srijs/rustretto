@@ -54,7 +54,8 @@ impl BlockGraph {
                 BranchStub::Goto(addr) => {
                     new_edges.push((*index, self.addr_map[&addr]));
                 }
-                BranchStub::IfICmp(_, _, _, if_addr, else_addr) => {
+                BranchStub::IfICmp(_, _, _, if_addr, else_addr)
+                | BranchStub::IfACmp(_, _, _, if_addr, else_addr) => {
                     new_edges.push((*index, self.addr_map[&if_addr]));
                     new_edges.push((*index, self.addr_map[&else_addr]));
                 }

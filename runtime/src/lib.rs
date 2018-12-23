@@ -1,5 +1,6 @@
 use std::ptr;
 
+use backtrace::Backtrace;
 use libc::c_void;
 
 mod io;
@@ -18,6 +19,12 @@ impl Ref {
             vtable: ptr::null(),
         }
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _Jrt_throw(_throwable: Ref) -> Ref {
+    println!("Exception: {:?}", Backtrace::new());
+    std::process::abort();
 }
 
 #[no_mangle]

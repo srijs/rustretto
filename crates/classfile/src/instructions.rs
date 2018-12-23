@@ -424,7 +424,7 @@ impl Disassembler {
             0xb6 => Instr::InvokeVirtual(self.code.read_u16::<BigEndian>()?),
             0x80 => Instr::IOr,
             0x70 => Instr::IRem,
-            0xac => Instr::IRem,
+            0xac => Instr::IReturn,
             0x78 => Instr::IShL,
             0x7a => Instr::IShR,
             0x36 => Instr::IStore(self.code.read_u8()?),

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -6,7 +7,7 @@ use classfile::descriptors::{BaseType, FieldType};
 use classfile::ClassFile;
 use failure::{format_err, Fallible};
 use jar::{ClassEntry, JarReader};
-use log::debug;
+use strbuf::StrBuf;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Class {
@@ -22,6 +23,38 @@ pub(crate) enum ArrayClass {
 
 pub(crate) trait ClassLoader {
     fn load(&self, name: &str) -> Fallible<Class>;
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct InputClassLoader<P> {
+    inputs: HashMap<StrBuf, Arc<ClassFile>>,
+    parent: P,
+}
+
+impl<P> InputClassLoader<P> {
+    pub fn new(parent: P) -> Self {
+        Self {
+            inputs: HashMap::new(),
+            parent,
+        }
+    }
+
+    pub fn add_input(&mut self, class_file: ClassFile) {
+        let name = class_file.get_name().clone();
+        self.inputs.insert(name, Arc::new(class_file));
+    }
+}
+
+impl<P> ClassLoader for InputClassLoader<P>
+where
+    P: ClassLoader,
+{
+    fn load(&self, name: &str) -> Fallible<Class> {
+        if let Some(class_file) = self.inputs.get(name) {
+            return Ok(Class::File(class_file.clone()));
+        }
+        self.parent.load(name)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -78,7 +111,7 @@ impl BootstrapClassLoader {
 
 impl ClassLoader for BootstrapClassLoader {
     fn load(&self, name: &str) -> Fallible<Class> {
-        debug!("loading class {}", name);
+        log::debug!("loading class {}", name);
         if name.starts_with('[') {
             let field_type = FieldType::try_from_str(&name[1..])?;
             let array_class = self.load_array_by_component_type(field_type)?;

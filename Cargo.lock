@@ -602,6 +602,7 @@ dependencies = [
 name = "runtime"
 version = "0.1.0"
 dependencies = [
+ "backtrace 0.3.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.45 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

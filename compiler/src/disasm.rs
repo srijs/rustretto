@@ -38,15 +38,22 @@ impl InstructionBlock {
         let start_addr = disasm.position();
         let mut instrs = vec![];
         while let Some((curr_addr, instr)) = disasm.decode_next()? {
+            log::trace!("decoded instruction {:?} at address {}", instr, curr_addr);
             let next_addr = disasm.position();
             let should_break = match instr {
-                Instr::Return => true,
+                Instr::Return | Instr::IReturn | Instr::AReturn => true,
                 Instr::Goto(offset) => {
                     let addr = (curr_addr as i64 + offset as i64) as u32;
                     start_addrs.push(addr);
                     true
                 }
-                Instr::IfEq(offset) | Instr::IfICmpGe(offset) => {
+                Instr::IfLe(offset)
+                | Instr::IfLt(offset)
+                | Instr::IfEq(offset)
+                | Instr::IfGe(offset)
+                | Instr::IfICmpGe(offset)
+                | Instr::IfICmpLe(offset)
+                | Instr::IfACmpNe(offset) => {
                     let if_addr = (curr_addr as i64 + offset as i64) as u32;
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);
                     true

@@ -17,8 +17,8 @@ use crate::classes::ClassGraph;
 use crate::loader::Class;
 use crate::mangle;
 use crate::translate::{
-    BasicBlock, BlockId, BranchStub, Comparator, Expr, InvokeExpr, InvokeTarget, Statement, Switch,
-    VarId,
+    AComparator, BasicBlock, BlockId, BranchStub, Const, Expr, IComparator, InvokeExpr,
+    InvokeTarget, Statement, Switch, VarId,
 };
 use crate::types::Type;
 use crate::vtable::VTableMap;
@@ -205,6 +205,14 @@ impl ClassCodeGen {
                 continue;
             }
 
+            let mut args = vec![];
+            if !method.is_static() {
+                args.push(Type::UninitializedThis);
+            }
+            for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {
+                args.push(Type::from_field_type(field_type.clone()));
+            }
+
             write!(
                 self.out,
                 "declare {return_type} @{mangled_name}(",
@@ -216,9 +224,11 @@ impl ClassCodeGen {
                     &method.descriptor.params
                 )
             )?;
-            write!(self.out, "%ref")?;
-            for ParameterDescriptor::Field(field) in method.descriptor.params.iter() {
-                write!(self.out, ", {}", tlt_field_type(field))?;
+            for (i, arg) in args.iter().enumerate() {
+                if i > 0 {
+                    write!(self.out, ", ")?;
+                }
+                write!(self.out, "{}", tlt_type(arg))?;
             }
             writeln!(self.out, ")")?;
         }
@@ -257,6 +267,7 @@ impl ClassCodeGen {
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
 
+        writeln!(self.out, "declare %ref @_Jrt_throw(%ref)")?;
         writeln!(self.out, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
 
         for index in self.class.constant_pool.indices() {
@@ -336,35 +347,108 @@ impl ClassCodeGen {
         }
         match &block.branch_stub {
             BranchStub::Goto(addr) => writeln!(self.out, "  br label %B{}", addr)?,
-            BranchStub::Return(None) => writeln!(self.out, "  ret void")?,
+            BranchStub::Return(ret_opt) => {
+                if let Some(ret) = ret_opt {
+                    writeln!(self.out, "  ret {} %v{}", tlt_type(&ret.0), ret.1)?;
+                } else {
+                    writeln!(self.out, "  ret void")?;
+                }
+            }
             BranchStub::Switch(switch) => self.gen_switch(switch)?,
             BranchStub::IfICmp(comp, var1, var2_opt, if_addr, else_addr) => {
-                let tmpid = self.var_id_gen.gen();
-                let code = match comp {
-                    Comparator::Eq => "eq",
-                    Comparator::Ge => "sge",
-                };
-                if let Some(var2) = var2_opt {
-                    writeln!(
-                        self.out,
-                        "  %tmp{} = icmp {} i32 %v{}, %v{}",
-                        tmpid, code, var1.1, var2.1
-                    )?;
-                } else {
-                    writeln!(
-                        self.out,
-                        "  %tmp{} = icmp {} i32 0, %v{}",
-                        tmpid, code, var1.1
-                    )?;
-                }
-                writeln!(
-                    self.out,
-                    "  br i1 %tmp{}, label %B{}, label %B{}",
-                    tmpid, if_addr, else_addr
-                )?;
+                self.gen_icmp(comp, var1, var2_opt, *if_addr, *else_addr)?
             }
-            _ => unimplemented!(),
+            BranchStub::IfACmp(comp, var1, var2, if_addr, else_addr) => {
+                self.gen_acmp(comp, var1, var2, *if_addr, *else_addr)?
+            }
         }
+        Ok(())
+    }
+
+    fn gen_icmp(
+        &mut self,
+        comp: &IComparator,
+        var1: &VarId,
+        var2_opt: &Option<VarId>,
+        if_addr: BlockId,
+        else_addr: BlockId,
+    ) -> Fallible<()> {
+        let tmpid = self.var_id_gen.gen();
+        let code = match comp {
+            IComparator::Eq => "eq",
+            IComparator::Ge => "sge",
+            IComparator::Le => "sle",
+            IComparator::Lt => "slt",
+        };
+        if let Some(var2) = var2_opt {
+            writeln!(
+                self.out,
+                "  %tmp{} = icmp {} i32 %v{}, %v{}",
+                tmpid, code, var1.1, var2.1
+            )?;
+        } else {
+            writeln!(
+                self.out,
+                "  %tmp{} = icmp {} i32 0, %v{}",
+                tmpid, code, var1.1
+            )?;
+        }
+        writeln!(
+            self.out,
+            "  br i1 %tmp{}, label %B{}, label %B{}",
+            tmpid, if_addr, else_addr
+        )?;
+        Ok(())
+    }
+
+    fn gen_acmp(
+        &mut self,
+        comp: &AComparator,
+        var1: &VarId,
+        var2: &VarId,
+        if_addr: BlockId,
+        else_addr: BlockId,
+    ) -> Fallible<()> {
+        let tmp_ptr1 = self.var_id_gen.gen();
+        self.gen_ref_to_ptr_to_int(var1, tmp_ptr1)?;
+        let tmp_ptr2 = self.var_id_gen.gen();
+        self.gen_ref_to_ptr_to_int(var2, tmp_ptr2)?;
+
+        let code = match comp {
+            AComparator::Eq => "eq",
+            AComparator::Ne => "ne",
+        };
+
+        let tmp_cmp = self.var_id_gen.gen();
+        writeln!(
+            self.out,
+            "  %t{} = icmp {} i64 %t{}, %t{}",
+            tmp_cmp, code, tmp_ptr1, tmp_ptr2
+        )?;
+        writeln!(
+            self.out,
+            "  br i1 %t{}, label %B{}, label %B{}",
+            tmp_cmp, if_addr, else_addr
+        )?;
+        Ok(())
+    }
+
+    fn gen_ref_to_ptr_to_int(&mut self, var: &VarId, dest_tmpvar: u64) -> Fallible<()> {
+        let tmp_ptr = self.var_id_gen.gen();
+        writeln!(
+            self.out,
+            "  %t{ptr} = extractvalue %ref %v{var}, 1",
+            var = var.1,
+            ptr = tmp_ptr
+        )?;
+
+        writeln!(
+            self.out,
+            "  %t{dest} = ptrtoint i8* %t{ptr} to i64",
+            ptr = tmp_ptr,
+            dest = dest_tmpvar
+        )?;
+
         Ok(())
     }
 
@@ -393,12 +477,17 @@ impl ClassCodeGen {
 
     fn gen_expr(&mut self, expr: &Expr, consts: &ConstantPool, dest: Dest) -> Fallible<()> {
         match expr {
-            Expr::ConstInt(i) => {
+            Expr::Const(Const::Int(i)) => {
                 if let Dest::Assign(dest_var) = dest {
                     writeln!(self.out, "  %v{} = and i32 {}, {}", dest_var.1, i, i)?;
                 }
             }
-            Expr::ConstString(index) => self.gen_load_string(*index, consts, dest)?,
+            Expr::Const(Const::Long(i)) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(self.out, "  %v{} = and i64 {}, {}", dest_var.1, i, i)?;
+                }
+            }
+            Expr::Const(Const::String(index)) => self.gen_load_string(*index, consts, dest)?,
             Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts, dest)?,
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
             Expr::IInc(var, i) => {
@@ -406,9 +495,28 @@ impl ClassCodeGen {
                     writeln!(self.out, "  %v{} = add i32 %v{}, {}", dest_var.1, var.1, i)?;
                 }
             }
+            Expr::LAdd(var1, var2) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(
+                        self.out,
+                        "  %v{} = add i64 %v{}, %v{}",
+                        dest_var.1, var1.1, var2.1
+                    )?;
+                }
+            }
+            Expr::LCmp(var1, var2) => self.gen_cmp_long(var1, var2, dest)?,
             Expr::New(class_name) => {
                 if let Dest::Assign(dest_var) = dest {
                     writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%{vtable}* @{vtable} to i8*), 1", dest_var.1, vtable = mangle::mangle_vtable_name(class_name))?;
+                }
+            }
+            Expr::Throw(var) => {
+                if let Dest::Assign(dest_var) = dest {
+                    writeln!(
+                        self.out,
+                        "  %v{} = call %ref @_Jrt_throw(%ref %v{}) noreturn",
+                        dest_var.1, var.1
+                    )?;
                 }
             }
             _ => bail!("unknown expression {:?}", expr),
@@ -581,6 +689,64 @@ impl ClassCodeGen {
             }
             writeln!(self.out, "")?;
         }
+        Ok(())
+    }
+
+    fn gen_cmp_long(&mut self, var1: &VarId, var2: &VarId, dest: Dest) -> Fallible<()> {
+        let tmp_lt = self.var_id_gen.gen();
+        writeln!(
+            self.out,
+            "  %t{} = icmp slt i64 %v{}, %v{}",
+            tmp_lt, var1.1, var2.1
+        )?;
+        let tmp_lt_ext = self.var_id_gen.gen();
+        writeln!(self.out, "  %t{} = zext i1 %t{} to i32", tmp_lt_ext, tmp_lt)?;
+        let tmp_gt = self.var_id_gen.gen();
+        writeln!(
+            self.out,
+            "  %t{} = icmp sgt i64 %v{}, %v{}",
+            tmp_gt, var1.1, var2.1
+        )?;
+        let tmp_gt_ext = self.var_id_gen.gen();
+        writeln!(self.out, "  %t{} = zext i1 %t{} to i32", tmp_gt_ext, tmp_gt)?;
+        if let Dest::Assign(dest_var) = dest {
+            writeln!(
+                self.out,
+                "  %v{} = sub i32 %t{}, %t{}",
+                dest_var.1, tmp_lt_ext, tmp_gt_ext
+            )?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn gen_native_method(
+        &mut self,
+        method: &Method,
+        args: &[VarId],
+        consts: &ConstantPool,
+    ) -> Fallible<()> {
+        let class_name = consts
+            .get_utf8(self.class.get_this_class().name_index)
+            .unwrap();
+        let method_name = consts.get_utf8(method.name_index).unwrap();
+        write!(
+            self.out,
+            "\ndeclare {return_type} @{mangled_name}(",
+            return_type = tlt_return_type(&method.descriptor.ret),
+            mangled_name = mangle::mangle_method_name(
+                class_name,
+                method_name,
+                &method.descriptor.ret,
+                &method.descriptor.params
+            )
+        )?;
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                write!(self.out, ", ")?;
+            }
+            write!(self.out, "{}", tlt_type(&arg.0))?;
+        }
+        writeln!(self.out, ")")?;
         Ok(())
     }
 }

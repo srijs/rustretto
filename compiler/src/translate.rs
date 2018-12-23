@@ -82,24 +82,40 @@ pub(crate) struct InvokeExpr {
 }
 
 #[derive(Debug)]
+pub(crate) enum Const {
+    Int(i32),
+    Long(i64),
+    String(ConstantIndex),
+}
+
+#[derive(Debug)]
 pub(crate) enum Expr {
     Var(VarId),
-    Const(ConstantIndex),
-    ConstInt(i32),
-    ConstString(ConstantIndex),
+    Const(Const),
     GetStatic(ConstantIndex),
     Invoke(InvokeExpr),
     IInc(VarId, i32),
     New(StrBuf),
+    LCmp(VarId, VarId),
+    LAdd(VarId, VarId),
+    Throw(VarId),
 }
 
 #[derive(Debug)]
 pub(crate) struct ExceptionHandlers; // TODO
 
 #[derive(Debug)]
-pub(crate) enum Comparator {
+pub(crate) enum IComparator {
+    Lt,
+    Le,
     Eq,
     Ge,
+}
+
+#[derive(Debug)]
+pub(crate) enum AComparator {
+    Eq,
+    Ne,
 }
 
 #[derive(Debug)]
@@ -112,7 +128,8 @@ pub(crate) struct Switch {
 #[derive(Debug)]
 pub(crate) enum BranchStub {
     Goto(BlockId),
-    IfICmp(Comparator, VarId, Option<VarId>, BlockId, BlockId),
+    IfICmp(IComparator, VarId, Option<VarId>, BlockId, BlockId),
+    IfACmp(AComparator, VarId, VarId, BlockId, BlockId),
     Return(Option<VarId>),
     Switch(Switch),
 }
@@ -180,14 +197,32 @@ impl<'a> TranslateInstr<'a> {
         return Ok(Some(TranslateNext::Statement(statement)));
     }
 
-    fn load_const(self, idx: u8) -> Fallible<Option<TranslateNext>> {
-        match self.consts.get_info(ConstantIndex::from_u8(idx)).unwrap() {
+    fn load_const(self, idx: u16) -> Fallible<Option<TranslateNext>> {
+        match self.consts.get_info(ConstantIndex::from_u16(idx)).unwrap() {
             Constant::String(ref string_const) => {
                 let var = self.var_id_gen.gen(Type::string());
                 self.state.push(var.clone());
                 let statement = Statement {
                     assign: Some(var),
-                    expression: Expr::ConstString(string_const.string_index),
+                    expression: Expr::Const(Const::String(string_const.string_index)),
+                };
+                return Ok(Some(TranslateNext::Statement(statement)));
+            }
+            Constant::Integer(ref integer_const) => {
+                let var = self.var_id_gen.gen(Type::Integer);
+                self.state.push(var.clone());
+                let statement = Statement {
+                    assign: Some(var),
+                    expression: Expr::Const(Const::Int(integer_const.value)),
+                };
+                return Ok(Some(TranslateNext::Statement(statement)));
+            }
+            Constant::Long(ref long_const) => {
+                let var = self.var_id_gen.gen(Type::Long);
+                self.state.push(var.clone());
+                let statement = Statement {
+                    assign: Some(var),
+                    expression: Expr::Const(Const::Long(long_const.value)),
                 };
                 return Ok(Some(TranslateNext::Statement(statement)));
             }
@@ -196,11 +231,45 @@ impl<'a> TranslateInstr<'a> {
     }
 
     fn iconst(self, int: i32) -> Fallible<Option<TranslateNext>> {
-        let var = self.var_id_gen.gen(Type::int());
+        let var = self.var_id_gen.gen(Type::Integer);
         self.state.push(var.clone());
         let statement = Statement {
             assign: Some(var),
-            expression: Expr::ConstInt(int),
+            expression: Expr::Const(Const::Int(int)),
+        };
+        Ok(Some(TranslateNext::Statement(statement)))
+    }
+
+    fn lconst(self, int: i64) -> Fallible<Option<TranslateNext>> {
+        let var = self.var_id_gen.gen(Type::Long);
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::Const(Const::Long(int)),
+        };
+        Ok(Some(TranslateNext::Statement(statement)))
+    }
+
+    fn lcmp(self) -> Fallible<Option<TranslateNext>> {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        let var = self.var_id_gen.gen(Type::Integer);
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::LCmp(value1, value2),
+        };
+        Ok(Some(TranslateNext::Statement(statement)))
+    }
+
+    fn ladd(self) -> Fallible<Option<TranslateNext>> {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        let var = self.var_id_gen.gen(Type::Long);
+        self.state.push(var.clone());
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::LAdd(value1, value2),
         };
         Ok(Some(TranslateNext::Statement(statement)))
     }
@@ -253,19 +322,33 @@ impl<'a> TranslateInstr<'a> {
         return Ok(Some(TranslateNext::Statement(statement)));
     }
 
+    fn athrow(self) -> Fallible<Option<TranslateNext>> {
+        let var = self.state.pop();
+        let new_var = self.var_id_gen.gen(var.0.clone());
+        let statement = Statement {
+            assign: Some(new_var),
+            expression: Expr::Throw(var),
+        };
+        return Ok(Some(TranslateNext::Statement(statement)));
+    }
+
     fn goto(self, offset: i16) -> Fallible<Option<TranslateNext>> {
         let addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
         return Ok(Some(TranslateNext::Branch(BranchStub::Goto(addr), None)));
     }
 
-    fn ret(self) -> Fallible<Option<TranslateNext>> {
+    fn ret(self, with_value: bool) -> Fallible<Option<TranslateNext>> {
+        let mut var_opt = None;
+        if with_value {
+            var_opt = Some(self.state.pop());
+        }
         return Ok(Some(TranslateNext::Branch(
-            BranchStub::Return(None),
+            BranchStub::Return(var_opt),
             Some(ExceptionHandlers),
         )));
     }
 
-    fn if_icmp(self, offset: i16, comp: Comparator) -> Fallible<Option<TranslateNext>> {
+    fn if_icmp(self, offset: i16, comp: IComparator) -> Fallible<Option<TranslateNext>> {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
         let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
@@ -276,12 +359,23 @@ impl<'a> TranslateInstr<'a> {
         )));
     }
 
-    fn if_zcmp(self, offset: i16, comp: Comparator) -> Fallible<Option<TranslateNext>> {
+    fn if_zcmp(self, offset: i16, comp: IComparator) -> Fallible<Option<TranslateNext>> {
         let var = self.state.pop();
         let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
         let else_addr = BlockId::from_addr(self.range.end);
         return Ok(Some(TranslateNext::Branch(
             BranchStub::IfICmp(comp, var, None, if_addr, else_addr),
+            None,
+        )));
+    }
+
+    fn if_acmp(self, offset: i16, comp: AComparator) -> Fallible<Option<TranslateNext>> {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
+        let else_addr = BlockId::from_addr(self.range.end);
+        return Ok(Some(TranslateNext::Branch(
+            BranchStub::IfACmp(comp, value1, value2, if_addr, else_addr),
             None,
         )));
     }
@@ -357,25 +451,42 @@ fn translate_next(
             Instr::AStore2 => t.store(2),
             Instr::ILoad(idx) => t.load(*idx as usize),
             Instr::IStore(idx) => t.store(*idx as usize),
+            Instr::LLoad(idx) => t.load(*idx as usize),
+            Instr::LStore(idx) => t.store(*idx as usize),
             Instr::Dup => t.duplicate(),
             Instr::IConst0 => return t.iconst(0),
             Instr::IConst1 => return t.iconst(1),
             Instr::IConst2 => return t.iconst(2),
             Instr::IConst3 => return t.iconst(3),
+            Instr::LConst0 => return t.lconst(0),
+            Instr::LConst1 => return t.lconst(1),
             Instr::BiPush(b) => return t.iconst(*b as i32),
             Instr::IInc(idx, int) => return t.iinc(*idx, *int as i32),
             Instr::GetStatic(idx) => return t.get_static(*idx),
-            Instr::LdC(idx) => return t.load_const(*idx),
+            Instr::LdC(idx) => return t.load_const(*idx as u16),
+            Instr::LdCW(idx) => return t.load_const(*idx),
+            Instr::LdC2W(idx) => return t.load_const(*idx),
             Instr::InvokeSpecial(idx) => return t.invoke(InvokeType::Special, *idx),
             Instr::InvokeStatic(idx) => return t.invoke(InvokeType::Static, *idx),
             Instr::InvokeVirtual(idx) => return t.invoke(InvokeType::Virtual, *idx),
             Instr::Goto(offset) => return t.goto(*offset),
-            Instr::Return => return t.ret(),
-            Instr::IfEq(offset) => return t.if_zcmp(*offset, Comparator::Eq),
-            Instr::IfICmpGe(offset) => return t.if_icmp(*offset, Comparator::Ge),
+            Instr::Return => return t.ret(false),
+            Instr::IReturn => return t.ret(true),
+            Instr::AReturn => return t.ret(true),
+            Instr::IfLt(offset) => return t.if_zcmp(*offset, IComparator::Lt),
+            Instr::IfLe(offset) => return t.if_zcmp(*offset, IComparator::Le),
+            Instr::IfEq(offset) => return t.if_zcmp(*offset, IComparator::Eq),
+            Instr::IfGe(offset) => return t.if_zcmp(*offset, IComparator::Ge),
+            Instr::IfICmpGe(offset) => return t.if_icmp(*offset, IComparator::Ge),
+            Instr::IfICmpLe(offset) => return t.if_icmp(*offset, IComparator::Le),
+            Instr::IfACmpEq(offset) => return t.if_acmp(*offset, AComparator::Eq),
+            Instr::IfACmpNe(offset) => return t.if_acmp(*offset, AComparator::Ne),
             Instr::New(idx) => return t.new(*idx),
             Instr::TableSwitch(table) => return t.table_switch(table),
             Instr::LookupSwitch(lookup) => return t.lookup_switch(lookup),
+            Instr::LCmp => return t.lcmp(),
+            Instr::LAdd => return t.ladd(),
+            Instr::AThrow => return t.athrow(),
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }
@@ -439,7 +550,8 @@ pub(crate) fn translate_method(
                 BranchStub::Goto(addr) => {
                     remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }
-                BranchStub::IfICmp(_, _, _, if_addr, else_addr) => {
+                BranchStub::IfICmp(_, _, _, if_addr, else_addr)
+                | BranchStub::IfACmp(_, _, _, if_addr, else_addr) => {
                     remaining.push((if_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                     remaining.push((else_addr, block.outgoing.new_with_same_shape(var_id_gen)));
                 }

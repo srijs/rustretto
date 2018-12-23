@@ -56,9 +56,11 @@ impl Compiler {
         classgen.gen_vtable_const(class_name)?;
 
         for method in cf.methods.iter() {
-            let mut var_id_gen = VarIdGen::new();
             let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
+            log::debug!("compiling method {} of class {}", name, class_name);
+
             let mut args = Vec::new();
+            let mut var_id_gen = VarIdGen::new();
             if &**name == "<init>" {
                 let arg_type = Type::UninitializedThis;
                 args.push(var_id_gen.gen(arg_type));
@@ -69,6 +71,12 @@ impl Compiler {
             for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {
                 args.push(var_id_gen.gen(Type::from_field_type(field_type.clone())));
             }
+
+            if method.is_native() {
+                classgen.gen_native_method(&method, &args, &cf.constant_pool)?;
+                continue;
+            }
+
             let code = method.attributes.get::<Code>().unwrap();
             let state = StackAndLocals::new(code.max_stack, code.max_locals, &args);
             let blocks = translate::translate_method(

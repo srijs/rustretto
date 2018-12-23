@@ -9,4 +9,5 @@ name = "runtime"
 crate-type = ["staticlib"]
 
 [dependencies]
+backtrace = "0.3.13"
 libc = "0.2.43"

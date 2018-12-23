@@ -13,7 +13,7 @@ use target_lexicon::{OperatingSystem, Triple};
 use crate::classes::ClassGraph;
 use crate::compile::Compiler;
 use crate::generate::CodeGen;
-use crate::loader::BootstrapClassLoader;
+use crate::loader::{BootstrapClassLoader, InputClassLoader};
 
 pub(crate) struct Driver {
     loader: BootstrapClassLoader,
@@ -45,7 +45,7 @@ impl Driver {
     }
 
     pub fn compile(&mut self, main: &str, inputs: &[PathBuf]) -> Fallible<()> {
-        let classes = ClassGraph::new(self.loader.clone());
+        let mut loader = InputClassLoader::new(self.loader.clone());
 
         let mut class_names = vec![];
         for input in inputs {
@@ -53,10 +53,11 @@ impl Driver {
             let class_file = ClassFile::parse(file)?;
             let class_name = class_file.get_name().clone();
 
-            classes.add(class_file);
+            loader.add_input(class_file);
             class_names.push(class_name);
         }
 
+        let classes = ClassGraph::new(loader);
         let codegen = CodeGen::new(classes.clone(), self.machine.clone())?;
         let mut compiler = Compiler::new(classes.clone(), codegen);
 

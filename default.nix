@@ -19,4 +19,6 @@ stdenv.mkDerivation rec {
     llvm_7
     openjdk8
   ];
+
+  RUST_BACKTRACE = 1;
 }

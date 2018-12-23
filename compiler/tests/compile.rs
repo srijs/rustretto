@@ -8,5 +8,6 @@ cases! {
     if_else,
     inheritance,
     table_switch,
-    lookup_switch
+    lookup_switch,
+    compare_long
 }
