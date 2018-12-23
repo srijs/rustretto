@@ -19,7 +19,7 @@ pub fn mangle_method_name(
     rettype: &ReturnTypeDescriptor,
     params: &[ParameterDescriptor],
 ) -> String {
-    let mut mangler = Mangler::new("Z");
+    let mut mangler = Mangler::new();
 
     mangler.nested_start();
 
@@ -57,7 +57,7 @@ pub fn mangle_method_name(
 }
 
 fn mangle_field_accessor(class_name: &str, field_name: &str, setter: bool) -> String {
-    let mut mangler = Mangler::new("Z");
+    let mut mangler = Mangler::new();
 
     mangler.nested_start();
 
@@ -79,17 +79,17 @@ fn mangle_field_accessor(class_name: &str, field_name: &str, setter: bool) -> St
 }
 
 pub fn mangle_vtable_name(class_name: &str) -> String {
-    format!("vtable.{}", mangle(class_name))
-}
+    let mut mangler = Mangler::new();
 
-fn mangle(input: &str) -> String {
-    let mut output = input.to_owned();
-    output = output.replace("_", "_1");
-    output = output.replace(";", "_2");
-    output = output.replace("[", "_3");
-    output = output.replace("/", "_");
-    output = output.replace(".", "_");
-    return output;
+    mangler.output.push_str("TV");
+
+    mangler.nested_start();
+    for ns in class_name.split("/") {
+        mangler.name(&ns);
+    }
+    mangler.nested_end();
+
+    return mangler.output;
 }
 
 struct Mangler {
@@ -97,9 +97,9 @@ struct Mangler {
 }
 
 impl Mangler {
-    fn new(prefix: &str) -> Self {
+    fn new() -> Self {
         Mangler {
-            output: format!("_{}", prefix),
+            output: "_Z".to_owned(),
         }
     }
 
@@ -217,5 +217,12 @@ mod tests {
             r"^int java::util::Arrays::hashCode<J[[:xdigit:]]+>\(java::lang::Object \[\]\)$",
             mangled
         );
+    }
+
+    #[test]
+    fn vtable_name() {
+        let mangled = mangle_vtable_name("java/lang/Object");
+
+        assert_demangle_match!(r"^\{vtable\(java::lang::Object\)\}$", mangled);
     }
 }
