@@ -748,6 +748,27 @@ impl ClassCodeGen {
         writeln!(self.out, ")")?;
         Ok(())
     }
+
+    pub(crate) fn gen_class_init(&mut self) -> Fallible<()> {
+        let mangled_name = mangle::mangle_method_name(
+            self.class.get_name(),
+            "<clinit>",
+            &ReturnTypeDescriptor::Void,
+            &[],
+        );
+        writeln!(
+            self.out,
+            "@llvm.global_ctors = appending global [1 x {{ i32, void ()*, i8* }}] ["
+        )?;
+        writeln!(self.out, "  {{ i32, void ()*, i8* }}")?;
+        writeln!(
+            self.out,
+            "  {{ i32 65535, void ()* @{}, i8* null }}",
+            mangled_name
+        )?;
+        writeln!(self.out, "]")?;
+        Ok(())
+    }
 }
 
 enum Dest {

@@ -1,0 +1,13 @@
+source: |
+    public class Test {
+        private static void init() {
+            System.out.println("INIT");
+        }
+        static {
+            init();
+        }
+        public static void main(String[] args) {
+            return;
+        }
+    }
+output: "INIT\n"

@@ -86,6 +86,10 @@ impl Compiler {
                 &mut var_id_gen,
             )?;
             classgen.gen_method(&method, &blocks, &cf.constant_pool)?;
+
+            if &**name == "<clinit>" {
+                classgen.gen_class_init()?;
+            }
         }
 
         if main {

@@ -4,6 +4,7 @@ mod utils;
 cases! {
     println,
     unicode,
+    clinit,
     for_loop,
     if_else,
     inheritance,
