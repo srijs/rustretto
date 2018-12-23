@@ -418,9 +418,19 @@ impl ClassCodeGen {
         else_addr: BlockId,
     ) -> Fallible<()> {
         let tmp_ptr1 = self.var_id_gen.gen();
-        self.gen_ref_to_ptr_to_int(var1, tmp_ptr1)?;
+        writeln!(
+            self.out,
+            "  %t{ptr} = extractvalue %ref %v{var}, 0",
+            var = var1.1,
+            ptr = tmp_ptr1
+        )?;
         let tmp_ptr2 = self.var_id_gen.gen();
-        self.gen_ref_to_ptr_to_int(var2, tmp_ptr2)?;
+        writeln!(
+            self.out,
+            "  %t{ptr} = extractvalue %ref %v{var}, 0",
+            var = var2.1,
+            ptr = tmp_ptr2
+        )?;
 
         let code = match comp {
             AComparator::Eq => "eq",
@@ -430,7 +440,7 @@ impl ClassCodeGen {
         let tmp_cmp = self.var_id_gen.gen();
         writeln!(
             self.out,
-            "  %t{} = icmp {} i64 %t{}, %t{}",
+            "  %t{} = icmp {} i8* %t{}, %t{}",
             tmp_cmp, code, tmp_ptr1, tmp_ptr2
         )?;
         writeln!(
@@ -438,25 +448,6 @@ impl ClassCodeGen {
             "  br i1 %t{}, label %B{}, label %B{}",
             tmp_cmp, if_addr, else_addr
         )?;
-        Ok(())
-    }
-
-    fn gen_ref_to_ptr_to_int(&mut self, var: &VarId, dest_tmpvar: u64) -> Fallible<()> {
-        let tmp_ptr = self.var_id_gen.gen();
-        writeln!(
-            self.out,
-            "  %t{ptr} = extractvalue %ref %v{var}, 1",
-            var = var.1,
-            ptr = tmp_ptr
-        )?;
-
-        writeln!(
-            self.out,
-            "  %t{dest} = ptrtoint i8* %t{ptr} to i64",
-            ptr = tmp_ptr,
-            dest = dest_tmpvar
-        )?;
-
         Ok(())
     }
 

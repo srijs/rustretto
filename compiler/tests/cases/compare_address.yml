@@ -1,0 +1,18 @@
+source: |
+    public class Test {
+        static void print(Object a, Object b) {
+            if (a == b) {
+                System.out.println("EQ");
+            } else {
+                System.out.println("NE");
+            }
+        }
+
+        public static void main(String[] args) {
+            print(null, null);
+            print("foo", "foo");
+            print("foo", "bar");
+            print(null, "bar");
+        }
+    }
+output: "EQ\nEQ\nNE\nNE\n"

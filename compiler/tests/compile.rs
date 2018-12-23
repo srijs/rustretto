@@ -9,5 +9,6 @@ cases! {
     inheritance,
     table_switch,
     lookup_switch,
-    compare_long
+    compare_long,
+    compare_address
 }
