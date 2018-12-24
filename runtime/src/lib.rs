@@ -4,6 +4,7 @@ use backtrace::Backtrace;
 use libc::c_void;
 
 mod io;
+pub mod native;
 pub mod stubs;
 
 #[repr(C)]
@@ -20,6 +21,10 @@ impl Ref {
             object: ptr::null(),
             vtable: ptr::null(),
         }
+    }
+
+    pub fn identity_hash_code(&self) -> i32 {
+        self.object as i32
     }
 }
 

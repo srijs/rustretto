@@ -2,35 +2,7 @@ use std::ptr;
 
 use libc::c_void;
 
-use super::Ref;
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object8getClassIu9Jd57352f6EEN4java4lang5ClassEv(
-    _this: Ref,
-) -> Ref {
-    Ref::null()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object8hashCodeIu9J7c7c3589EEiv(_this: Ref) -> i32 {
-    0
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object5cloneIu9J117cf78dEEN4java4lang6ObjectEv(
-    _this: Ref,
-) -> Ref {
-    Ref::null()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object6notifyIu9Jec9f6595EEvv(_this: Ref) {}
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object9notifyAllIu9J01f1085cEEvv(_this: Ref) {}
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object4waitIu9J70446489EEvl(_this: Ref) {}
+use crate::Ref;
 
 #[no_mangle]
 pub static _ZN4java4lang6System3outE: Ref = Ref {
@@ -53,9 +25,6 @@ pub unsafe extern "C" fn _ZN4java4lang24IllegalArgumentException4initIu9Jffb6fc9
     _string: Ref,
 ) {
 }
-
-#[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6Object15registerNativesIu9Jed9fc4b9EEvv() {}
 
 #[no_mangle]
 pub unsafe extern "C" fn _ZN4java4lang7Integer11toHexStringIu9Jab2e85aaEEN4java4lang6StringEi(
