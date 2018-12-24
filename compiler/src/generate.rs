@@ -194,7 +194,7 @@ impl ClassCodeGen {
 
         writeln!(
             self.out,
-            "@{vtable} = external global %{vtable}",
+            "@{vtable} = external constant %{vtable}",
             vtable = vtable_name
         )?;
 
