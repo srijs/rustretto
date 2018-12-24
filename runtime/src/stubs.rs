@@ -33,13 +33,10 @@ pub unsafe extern "C" fn _ZN4java4lang6Object9notifyAllIu9J01f1085cEEvv(_this: R
 pub unsafe extern "C" fn _ZN4java4lang6Object4waitIu9J70446489EEvl(_this: Ref) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn _ZN4java4lang6System3outv03getE(_this: Ref) -> Ref {
-    Ref {
-        object: ptr::null(),
-        vtable: crate::io::VTABLE_PRINTSTREAM as *const crate::io::VTablePrintStream
-            as *const c_void,
-    }
-}
+pub static _ZN4java4lang6System3outE: Ref = Ref {
+    object: ptr::null(),
+    vtable: crate::io::VTABLE_PRINTSTREAM as *const crate::io::VTablePrintStream as *const c_void,
+};
 
 #[no_mangle]
 pub static _ZTVN4java4lang13StringBuilderE: () = ();

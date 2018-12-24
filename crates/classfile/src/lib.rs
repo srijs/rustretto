@@ -32,6 +32,12 @@ pub struct Field {
     pub attributes: Attributes,
 }
 
+impl Field {
+    pub fn is_static(&self) -> bool {
+        self.access_flags.contains(FieldAccessFlags::STATIC)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Method {
     pub access_flags: MethodAccessFlags,

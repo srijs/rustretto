@@ -235,17 +235,16 @@ impl ClassCodeGen {
 
         for field in class.fields.iter() {
             let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
+
+            if !field.is_static() {
+                continue;
+            }
+
             writeln!(
                 self.out,
-                "declare {field_type} @{mangled_name}(%ref)",
-                field_type = tlt_field_type(&field.descriptor),
-                mangled_name = mangle::mangle_field_name_getter(class_name, field_name)
-            )?;
-            writeln!(
-                self.out,
-                "declare void @{mangled_name}(%ref, {field_type})",
-                field_type = tlt_field_type(&field.descriptor),
-                mangled_name = mangle::mangle_field_name_setter(class_name, field_name)
+                "@{field_name} = external global {field_type}",
+                field_name = mangle::mangle_field_name(class_name, field_name),
+                field_type = tlt_field_type(&field.descriptor)
             )?;
         }
 
@@ -638,10 +637,10 @@ impl ClassCodeGen {
         if let Dest::Assign(dest_var) = dest {
             writeln!(
                 self.out,
-                "  %v{} = call {field_type} @{mangled_name}(%ref zeroinitializer)",
+                "  %v{} = load {field_type}, {field_type}* @{field_name}",
                 dest_var.1,
                 field_type = tlt_field_type(&field_ref.descriptor),
-                mangled_name = mangle::mangle_field_name_getter(field_class_name, field_name)
+                field_name = mangle::mangle_field_name(field_class_name, field_name)
             )?;
         }
         Ok(())

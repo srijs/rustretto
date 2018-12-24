@@ -5,14 +5,6 @@ use classfile::descriptors::{BaseType, FieldType, ParameterDescriptor, ReturnTyp
 use fnv::FnvHasher;
 use idna::punycode;
 
-pub fn mangle_field_name_setter(class_name: &str, field_name: &str) -> String {
-    mangle_field_accessor(class_name, field_name, true)
-}
-
-pub fn mangle_field_name_getter(class_name: &str, field_name: &str) -> String {
-    mangle_field_accessor(class_name, field_name, false)
-}
-
 pub fn mangle_method_name(
     class_name: &str,
     method_name: &str,
@@ -56,7 +48,7 @@ pub fn mangle_method_name(
     return mangler.output;
 }
 
-fn mangle_field_accessor(class_name: &str, field_name: &str, setter: bool) -> String {
+pub fn mangle_field_name(class_name: &str, field_name: &str) -> String {
     let mut mangler = Mangler::new();
 
     mangler.nested_start();
@@ -66,12 +58,6 @@ fn mangle_field_accessor(class_name: &str, field_name: &str, setter: bool) -> St
     }
 
     mangler.name(field_name);
-
-    if setter {
-        mangler.output.push_str("v13set");
-    } else {
-        mangler.output.push_str("v03get");
-    }
 
     mangler.nested_end();
 

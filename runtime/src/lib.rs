@@ -12,6 +12,8 @@ pub struct Ref {
     vtable: *const c_void,
 }
 
+unsafe impl Sync for Ref {}
+
 impl Ref {
     pub fn null() -> Self {
         Ref {
