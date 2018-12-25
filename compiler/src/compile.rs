@@ -42,6 +42,7 @@ impl Compiler {
                     match self.classes.get(ext_class_name)? {
                         Class::File(ext_class_file) => {
                             classgen.gen_extern_decls(&ext_class_file)?;
+                            classgen.gen_object_type(ext_class_name)?;
                             classgen.gen_vtable_type(ext_class_name)?;
                         }
                         _ => {}
@@ -51,6 +52,7 @@ impl Compiler {
             }
         }
 
+        classgen.gen_object_type(class_name)?;
         classgen.gen_vtable_type(class_name)?;
         classgen.gen_vtable_decls(class_name)?;
         classgen.gen_vtable_const(class_name)?;

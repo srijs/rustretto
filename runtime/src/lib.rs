@@ -29,6 +29,14 @@ impl Ref {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn _Jrt_new(size: u64, vtable: *const i8) -> Ref {
+    Ref {
+        object: libc::malloc(size as usize),
+        vtable: vtable as *const c_void,
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn _Jrt_throw(_throwable: Ref) {
     let backtrace = Backtrace::new();
     println!("Exception {:?}", backtrace);

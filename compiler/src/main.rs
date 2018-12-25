@@ -13,11 +13,11 @@ mod disasm;
 mod driver;
 mod frame;
 mod generate;
+mod layout;
 mod loader;
 mod mangle;
 mod translate;
 mod types;
-mod vtable;
 
 use crate::driver::Driver;
 

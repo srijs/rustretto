@@ -7,13 +7,14 @@ use classfile::descriptors::{
     ArrayType, BaseType, FieldType, MethodDescriptor, ObjectType, ParameterDescriptor,
     ReturnTypeDescriptor,
 };
-use classfile::{ClassFile, ConstantIndex, ConstantPool, Method};
+use classfile::{ClassFile, ConstantIndex, ConstantPool, FieldRef, Method};
 use failure::{bail, Fallible};
 use llvm::codegen::{TargetDataLayout, TargetMachine, TargetTriple};
 use strbuf::StrBuf;
 
 use crate::blocks::BlockGraph;
 use crate::classes::ClassGraph;
+use crate::layout::{FieldLayoutMap, VTableMap};
 use crate::loader::Class;
 use crate::mangle;
 use crate::translate::{
@@ -21,11 +22,11 @@ use crate::translate::{
     InvokeTarget, Op, Statement, Switch, VarId,
 };
 use crate::types::Type;
-use crate::vtable::VTableMap;
 
 pub(crate) struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
+    field_layouts: FieldLayoutMap,
     machine: Arc<TargetMachine>,
     data_layout: TargetDataLayout,
 }
@@ -33,10 +34,12 @@ pub(crate) struct CodeGen {
 impl CodeGen {
     pub fn new(classes: ClassGraph, machine: Arc<TargetMachine>) -> Fallible<Self> {
         let vtables = VTableMap::new(classes.clone());
+        let field_layouts = FieldLayoutMap::new(classes.clone());
         let data_layout = machine.data_layout();
         Ok(CodeGen {
             classes,
             vtables,
+            field_layouts,
             machine,
             data_layout,
         })
@@ -58,6 +61,7 @@ impl CodeGen {
             class: class.clone(),
             classes: self.classes.clone(),
             vtables: self.vtables.clone(),
+            field_layouts: self.field_layouts.clone(),
             var_id_gen: TmpVarIdGen::new(),
             target_triple: self.machine.triple(),
             target_data_layout: self.data_layout.to_string_rep(),
@@ -70,6 +74,7 @@ pub(crate) struct ClassCodeGen {
     class: Arc<ClassFile>,
     classes: ClassGraph,
     vtables: VTableMap,
+    field_layouts: FieldLayoutMap,
     var_id_gen: TmpVarIdGen,
     target_triple: TargetTriple,
     target_data_layout: llvm::Message,
@@ -122,6 +127,28 @@ impl ClassCodeGen {
                 write!(self.out, "")?;
             }
             writeln!(self.out, " ; {}", key.method_name)?;
+        }
+        writeln!(self.out, "}}")?;
+
+        Ok(())
+    }
+
+    pub(crate) fn gen_object_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
+        let field_layout = self.field_layouts.get(class_name)?;
+        writeln!(
+            self.out,
+            "%{} = type {{",
+            mangle::mangle_class_name(class_name)
+        )?;
+        for (idx, key) in field_layout.iter().enumerate() {
+            let ftyp = tlt_field_type(&key.field_type);
+            write!(self.out, "  {}", ftyp)?;
+            if idx < field_layout.len() - 1 {
+                write!(self.out, ",")?;
+            } else {
+                write!(self.out, "")?;
+            }
+            writeln!(self.out, " ; {}", key.field_name)?;
         }
         writeln!(self.out, "}}")?;
 
@@ -266,6 +293,7 @@ impl ClassCodeGen {
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
 
+        writeln!(self.out, "declare %ref @_Jrt_new(i64, i8*)")?;
         writeln!(self.out, "declare void @_Jrt_throw(%ref) noreturn")?;
         writeln!(self.out, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
 
@@ -467,7 +495,7 @@ impl ClassCodeGen {
     fn gen_statement(&mut self, stmt: &Statement, consts: &ConstantPool) -> Fallible<()> {
         let dest;
         if let Some(ref var) = stmt.assign {
-            dest = Dest::Assign(var.clone());
+            dest = Dest::Assign(DestAssign::Var(var.clone()));
         } else {
             dest = Dest::Ignore;
         }
@@ -478,25 +506,54 @@ impl ClassCodeGen {
         match expr {
             Expr::String(index) => self.gen_load_string(*index, consts, dest)?,
             Expr::GetStatic(index) => self.gen_expr_get_static(*index, consts, dest)?,
+            Expr::GetField(obj, index) => self.gen_expr_get_field(obj, *index, consts, dest)?,
+            Expr::PutField(obj, index, value) => {
+                self.gen_expr_put_field(obj, *index, value, consts)?
+            }
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
-            Expr::Add(var1, var2) => {
-                if let Dest::Assign(dest_var) = dest {
+            Expr::Add(typ, var1, var2) => {
+                if let Dest::Assign(assign) = dest {
                     writeln!(
                         self.out,
-                        "  %v{} = add {} {}, {}",
-                        dest_var.1,
-                        tlt_type(&dest_var.0),
+                        "  {} = add {} {}, {}",
+                        assign,
+                        tlt_type(&typ),
                         OpVal(var1),
                         OpVal(var2)
                     )?;
                 }
             }
             Expr::LCmp(var1, var2) => self.gen_cmp_long(var1, var2, dest)?,
-            Expr::New(class_name) => {
-                if let Dest::Assign(dest_var) = dest {
-                    writeln!(self.out, "  %v{} = insertvalue %ref zeroinitializer, i8* bitcast (%{vtable}* @{vtable} to i8*), 1", dest_var.1, vtable = mangle::mangle_vtable_name(class_name))?;
-                }
-            }
+            Expr::New(class_name) => self.gen_expr_new(class_name, dest)?,
+        }
+        Ok(())
+    }
+
+    fn gen_expr_new(&mut self, class_name: &StrBuf, dest: Dest) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let mangled_class_name = mangle::mangle_class_name(class_name);
+            let tmp_size_ptr = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = getelementptr %{class_name}, %{class_name}* null, i32 1",
+                tmp_size_ptr,
+                class_name = mangled_class_name
+            )?;
+            let tmp_size_int = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = ptrtoint %{class_name}* %t{} to i64",
+                tmp_size_int,
+                tmp_size_ptr,
+                class_name = mangled_class_name
+            )?;
+            writeln!(
+                self.out,
+                "  {} = call %ref @_Jrt_new(i64 %t{}, i8* bitcast (%{vtable}* @{vtable} to i8*))",
+                assign,
+                tmp_size_int,
+                vtable = mangle::mangle_vtable_name(class_name)
+            )?;
         }
         Ok(())
     }
@@ -508,11 +565,11 @@ impl ClassCodeGen {
         dest: Dest,
     ) -> Fallible<()> {
         let len = consts.get_utf8(index).unwrap().len();
-        if let Dest::Assign(dest_var) = dest {
+        if let Dest::Assign(assign) = dest {
             writeln!(
                 self.out,
-                "  %v{} = call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
-                dest_var.1,
+                "  {} = call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
+                assign,
                 len,
                 len + 1,
                 len + 1,
@@ -587,8 +644,8 @@ impl ClassCodeGen {
             ),
         };
 
-        if let Dest::Assign(dest_var) = dest {
-            write!(self.out, "  %v{} = ", dest_var.1)?;
+        if let Dest::Assign(assign) = dest {
+            write!(self.out, "  {} = ", assign)?;
         } else {
             write!(self.out, "  ")?;
         }
@@ -634,16 +691,111 @@ impl ClassCodeGen {
         let field_name = consts.get_utf8(field_ref.name_index).unwrap();
         let field_class = consts.get_class(field_ref.class_index).unwrap();
         let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
-        if let Dest::Assign(dest_var) = dest {
+        if let Dest::Assign(assign) = dest {
             writeln!(
                 self.out,
-                "  %v{} = load {field_type}, {field_type}* @{field_name}",
-                dest_var.1,
+                "  {} = load {field_type}, {field_type}* @{field_name}",
+                assign,
                 field_type = tlt_field_type(&field_ref.descriptor),
                 field_name = mangle::mangle_field_name(field_class_name, field_name)
             )?;
         }
         Ok(())
+    }
+
+    fn gen_expr_get_field(
+        &mut self,
+        object: &Op,
+        index: ConstantIndex,
+        consts: &ConstantPool,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let tmp_field_ptr = self.var_id_gen.gen();
+            let field_ref = self.gen_get_field_ptr(
+                object,
+                index,
+                consts,
+                Dest::Assign(DestAssign::Tmp(tmp_field_ptr)),
+            )?;
+
+            writeln!(
+                self.out,
+                "  {} = load {field_type}, {field_type}* %t{}",
+                assign,
+                tmp_field_ptr,
+                field_type = tlt_field_type(&field_ref.descriptor)
+            )?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_put_field(
+        &mut self,
+        object: &Op,
+        index: ConstantIndex,
+        value: &Op,
+        consts: &ConstantPool,
+    ) -> Fallible<()> {
+        let tmp_field_ptr = self.var_id_gen.gen();
+        let field_ref = self.gen_get_field_ptr(
+            object,
+            index,
+            consts,
+            Dest::Assign(DestAssign::Tmp(tmp_field_ptr)),
+        )?;
+
+        writeln!(
+            self.out,
+            "  store {field_type} {}, {field_type}* %t{}",
+            OpVal(value),
+            tmp_field_ptr,
+            field_type = tlt_field_type(&field_ref.descriptor)
+        )?;
+        Ok(())
+    }
+
+    fn gen_get_field_ptr(
+        &mut self,
+        object: &Op,
+        index: ConstantIndex,
+        consts: &ConstantPool,
+        dest: Dest,
+    ) -> Fallible<FieldRef> {
+        let field_ref = consts.get_field_ref(index).unwrap();
+        if let Dest::Assign(assign) = dest {
+            let field_name = consts.get_utf8(field_ref.name_index).unwrap();
+            let field_class = consts.get_class(field_ref.class_index).unwrap();
+            let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
+            let field_layout = self.field_layouts.get(field_class_name)?;
+
+            let mangled_class_name = mangle::mangle_class_name(field_class_name);
+
+            let tmp_object_ptr = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = extractvalue %ref {}, 0",
+                tmp_object_ptr,
+                OpVal(object)
+            )?;
+
+            let tmp_object_ptr_cast = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = bitcast i8* %t{} to %{}*",
+                tmp_object_ptr_cast, tmp_object_ptr, mangled_class_name
+            )?;
+
+            writeln!(
+                self.out,
+                "  {} = getelementptr %{class_name}, %{class_name}* %t{}, i64 0, i32 {field_index}",
+                assign,
+                tmp_object_ptr_cast,
+                class_name = mangled_class_name,
+                field_index = field_layout.get(field_name, &field_ref.descriptor).unwrap()
+            )?;
+        }
+        Ok(field_ref)
     }
 
     fn gen_phi_nodes(&mut self, block: &BasicBlock, blocks: &BlockGraph) -> Fallible<()> {
@@ -682,11 +834,11 @@ impl ClassCodeGen {
         )?;
         let tmp_gt_ext = self.var_id_gen.gen();
         writeln!(self.out, "  %t{} = zext i1 %t{} to i32", tmp_gt_ext, tmp_gt)?;
-        if let Dest::Assign(dest_var) = dest {
+        if let Dest::Assign(assign) = dest {
             writeln!(
                 self.out,
-                "  %v{} = sub i32 %t{}, %t{}",
-                dest_var.1, tmp_gt_ext, tmp_lt_ext
+                "  {} = sub i32 %t{}, %t{}",
+                assign, tmp_gt_ext, tmp_lt_ext
             )?;
         }
         Ok(())
@@ -747,7 +899,21 @@ impl ClassCodeGen {
 
 enum Dest {
     Ignore,
-    Assign(VarId),
+    Assign(DestAssign),
+}
+
+enum DestAssign {
+    Var(VarId),
+    Tmp(u64),
+}
+
+impl fmt::Display for DestAssign {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DestAssign::Var(v) => write!(f, "%v{}", v.1),
+            DestAssign::Tmp(t) => write!(f, "%t{}", t),
+        }
+    }
 }
 
 pub struct TmpVarIdGen {

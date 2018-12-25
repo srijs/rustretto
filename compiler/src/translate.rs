@@ -117,10 +117,12 @@ impl Op {
 pub(crate) enum Expr {
     String(ConstantIndex),
     GetStatic(ConstantIndex),
+    GetField(Op, ConstantIndex),
+    PutField(Op, ConstantIndex, Op),
     Invoke(InvokeExpr),
     New(StrBuf),
     LCmp(Op, Op),
-    Add(Op, Op),
+    Add(Type, Op, Op),
 }
 
 #[derive(Debug)]
@@ -220,6 +222,37 @@ impl<'a> TranslateInstr<'a> {
         self.stmts.push(statement);
     }
 
+    fn get_field(&mut self, idx: u16) {
+        let object = self.state.pop();
+        let field = self
+            .consts
+            .get_field_ref(ConstantIndex::from_u16(idx))
+            .unwrap();
+        let var = self.var_id_gen.gen(Type::from_field_type(field.descriptor));
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::GetField(object, ConstantIndex::from_u16(idx)),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn put_field(&mut self, idx: u16) {
+        let value = self.state.pop();
+        let object = self.state.pop();
+        let field = self
+            .consts
+            .get_field_ref(ConstantIndex::from_u16(idx))
+            .unwrap();
+        let var = self.var_id_gen.gen(Type::from_field_type(field.descriptor));
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::PutField(object, ConstantIndex::from_u16(idx), value),
+        };
+        self.stmts.push(statement);
+    }
+
     fn load_const(&mut self, idx: u16) {
         match self.consts.get_info(ConstantIndex::from_u16(idx)).unwrap() {
             Constant::String(ref string_const) => {
@@ -261,7 +294,7 @@ impl<'a> TranslateInstr<'a> {
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
-            expression: Expr::Add(value1, value2),
+            expression: Expr::Add(value1.get_type(), value1, value2),
         };
         self.stmts.push(statement);
     }
@@ -274,7 +307,7 @@ impl<'a> TranslateInstr<'a> {
             .insert(idx as usize, Op::Var(var2.clone()));
         let statement = Statement {
             assign: Some(var2),
-            expression: Expr::Add(var1, Op::Const(Const::Int(int))),
+            expression: Expr::Add(Type::Integer, var1, Op::Const(Const::Int(int))),
         };
         self.stmts.push(statement);
     }
@@ -457,6 +490,8 @@ fn translate_next(
             Instr::BiPush(b) => t.push_const(Const::Int(*b as i32)),
             Instr::IInc(idx, int) => t.iinc(*idx, *int as i32),
             Instr::GetStatic(idx) => t.get_static(*idx),
+            Instr::GetField(idx) => t.get_field(*idx),
+            Instr::PutField(idx) => t.put_field(*idx),
             Instr::LdC(idx) => t.load_const(*idx as u16),
             Instr::LdCW(idx) => t.load_const(*idx),
             Instr::LdC2W(idx) => t.load_const(*idx),

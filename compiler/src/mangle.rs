@@ -64,6 +64,20 @@ pub fn mangle_field_name(class_name: &str, field_name: &str) -> String {
     return mangler.output;
 }
 
+pub fn mangle_class_name(class_name: &str) -> String {
+    let mut mangler = Mangler::new();
+
+    mangler.nested_start();
+
+    for ns in class_name.split("/") {
+        mangler.name(&ns);
+    }
+
+    mangler.nested_end();
+
+    return mangler.output;
+}
+
 pub fn mangle_vtable_name(class_name: &str) -> String {
     let mut mangler = Mangler::new();
 
