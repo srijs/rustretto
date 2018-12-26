@@ -10,7 +10,7 @@ use frontend::loader::Class;
 use frontend::translate::{self, VarIdGen};
 use frontend::types::Type;
 
-use backend::generate::CodeGen;
+use backend::CodeGen;
 
 pub struct Compiler {
     classes: ClassGraph,

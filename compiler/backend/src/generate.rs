@@ -20,19 +20,19 @@ use frontend::translate::{
 };
 use frontend::types::Type;
 
-use crate::mangle;
 use crate::layout::{FieldLayoutMap, VTableMap};
+use crate::mangle;
 
 pub struct Target {
     pub triple: String,
-    pub data_layout: String
+    pub data_layout: String,
 }
 
 pub struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
     field_layouts: FieldLayoutMap,
-    target: Arc<Target>
+    target: Arc<Target>,
 }
 
 impl CodeGen {
@@ -43,7 +43,7 @@ impl CodeGen {
             classes,
             vtables,
             field_layouts,
-            target: Arc::new(target)
+            target: Arc::new(target),
         })
     }
 

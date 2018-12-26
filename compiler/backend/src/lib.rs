@@ -1,3 +1,5 @@
-pub mod layout;
-pub mod generate;
-pub mod mangle;
+mod generate;
+mod layout;
+mod mangle;
+
+pub use self::generate::{ClassCodeGen, CodeGen, Target};

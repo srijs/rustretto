@@ -1,15 +1,16 @@
 use std::borrow::Borrow;
+use std::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 use bytes::Bytes;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug)]
 pub struct StrBuf(string::String<Bytes>);
 
 impl StrBuf {
-    pub fn from_str(s: &str) -> Self {
+    pub fn new(s: &str) -> Self {
         StrBuf(string::String::from_str(s))
     }
 
@@ -37,6 +38,26 @@ impl Hash for StrBuf {
         // Because of the impl Borrow<str> for StrBuf, we need to make sure that the Hash
         // implementations behave identically between str and StrBuf.
         str::hash(&*self, state)
+    }
+}
+
+impl PartialEq for StrBuf {
+    fn eq(&self, other: &Self) -> bool {
+        str::eq(&*self, &*other as &str)
+    }
+}
+
+impl Eq for StrBuf {}
+
+impl PartialOrd for StrBuf {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        str::partial_cmp(&*self, &*other as &str)
+    }
+}
+
+impl Ord for StrBuf {
+    fn cmp(&self, other: &Self) -> Ordering {
+        str::cmp(&*self, &*other as &str)
     }
 }
 

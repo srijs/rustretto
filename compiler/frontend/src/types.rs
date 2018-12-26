@@ -20,7 +20,7 @@ impl Type {
     }
 
     pub fn string() -> Self {
-        Type::Object(StrBuf::from_str("java.lang.String"))
+        Type::Object(StrBuf::new("java.lang.String"))
     }
 
     pub fn from_field_type(field_type: FieldType) -> Self {
@@ -37,12 +37,10 @@ impl Type {
                 BaseType::Long => Type::Long,
                 BaseType::Double => Type::Double,
             },
-            FieldType::Object(object_type) => {
-                Type::Object(StrBuf::from_str(&object_type.class_name))
-            }
+            FieldType::Object(object_type) => Type::Object(StrBuf::new(&object_type.class_name)),
             FieldType::Array(array_type) => {
                 let class_name = format!("[{}", array_type.component_type.to_string());
-                Type::Object(StrBuf::from_str(&class_name))
+                Type::Object(StrBuf::new(&class_name))
             }
         }
     }

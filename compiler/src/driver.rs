@@ -13,7 +13,7 @@ use target_lexicon::{OperatingSystem, Triple};
 use frontend::classes::ClassGraph;
 use frontend::loader::{BootstrapClassLoader, InputClassLoader};
 
-use backend::generate::{CodeGen, Target};
+use backend::{CodeGen, Target};
 
 use crate::compile::Compiler;
 
