@@ -10,12 +10,14 @@ use failure::{bail, Fallible};
 use llvm;
 use target_lexicon::{OperatingSystem, Triple};
 
-use crate::classes::ClassGraph;
-use crate::compile::Compiler;
-use crate::generate::CodeGen;
-use crate::loader::{BootstrapClassLoader, InputClassLoader};
+use frontend::classes::ClassGraph;
+use frontend::loader::{BootstrapClassLoader, InputClassLoader};
 
-pub(crate) struct Driver {
+use backend::generate::{CodeGen, Target};
+
+use crate::compile::Compiler;
+
+pub struct Driver {
     loader: BootstrapClassLoader,
     target_triple: Triple,
     optimize: bool,
@@ -58,7 +60,11 @@ impl Driver {
         }
 
         let classes = ClassGraph::new(loader);
-        let codegen = CodeGen::new(classes.clone(), self.machine.clone())?;
+        let target = Target {
+            triple: self.machine.triple().to_string(),
+            data_layout: self.machine.data_layout().to_string_rep().to_string(),
+        };
+        let codegen = CodeGen::new(classes.clone(), target)?;
         let mut compiler = Compiler::new(classes.clone(), codegen);
 
         for class_name in class_names {

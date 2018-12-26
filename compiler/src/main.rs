@@ -6,18 +6,8 @@ use failure::{format_err, Fallible};
 use structopt::StructOpt;
 use target_lexicon::Triple;
 
-mod blocks;
-mod classes;
 mod compile;
-mod disasm;
 mod driver;
-mod frame;
-mod generate;
-mod layout;
-mod loader;
-mod mangle;
-mod translate;
-mod types;
 
 use crate::driver::Driver;
 

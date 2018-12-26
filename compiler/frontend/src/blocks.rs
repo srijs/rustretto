@@ -6,7 +6,7 @@ use petgraph::Direction;
 
 use crate::translate::{BasicBlock, BlockId, BranchStub, Op, VarId};
 
-pub(crate) struct BlockGraph {
+pub struct BlockGraph {
     inner: StableGraph<BasicBlock, ()>,
     addr_map: BTreeMap<BlockId, NodeIndex>,
 }

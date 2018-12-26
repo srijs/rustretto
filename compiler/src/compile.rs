@@ -4,14 +4,15 @@ use classfile::descriptors::ParameterDescriptor;
 use failure::{bail, Fallible};
 use strbuf::StrBuf;
 
-use crate::classes::ClassGraph;
-use crate::frame::StackAndLocals;
-use crate::generate::CodeGen;
-use crate::loader::Class;
-use crate::translate::{self, VarIdGen};
-use crate::types::Type;
+use frontend::classes::ClassGraph;
+use frontend::frame::StackAndLocals;
+use frontend::loader::Class;
+use frontend::translate::{self, VarIdGen};
+use frontend::types::Type;
 
-pub(crate) struct Compiler {
+use backend::generate::CodeGen;
+
+pub struct Compiler {
     classes: ClassGraph,
     codegen: CodeGen,
 }

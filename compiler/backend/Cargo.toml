@@ -1,0 +1,25 @@
+[package]
+name = "backend"
+version = "0.1.0"
+authors = ["Sam Rijs <srijs@airpost.net>"]
+edition = "2018"
+
+[dependencies]
+failure = "0.1.2"
+fnv = "1.0.6"
+idna = "0.1.5"
+indexmap = "1.0.2"
+log = "0.4.6"
+
+[dependencies.frontend]
+path = "../frontend"
+
+[dependencies.strbuf]
+path = "../../crates/strbuf"
+
+[dependencies.classfile]
+path = "../../crates/classfile"
+
+[dev-dependencies]
+cpp_demangle = "0.2.12"
+regex = "1.1.0"

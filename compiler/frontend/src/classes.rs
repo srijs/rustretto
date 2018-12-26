@@ -52,7 +52,7 @@ impl Inner {
 }
 
 #[derive(Clone)]
-pub(crate) struct ClassGraph {
+pub struct ClassGraph {
     inner: Arc<Mutex<Inner>>,
     loader: Arc<ClassLoader + Sync + Send>,
 }

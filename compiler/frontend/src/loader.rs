@@ -10,23 +10,23 @@ use jar::{ClassEntry, JarReader};
 use strbuf::StrBuf;
 
 #[derive(Clone, Debug)]
-pub(crate) enum Class {
+pub enum Class {
     File(Arc<ClassFile>),
     Array(ArrayClass),
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum ArrayClass {
+pub enum ArrayClass {
     Primitive(BaseType),
     Complex(Box<Class>),
 }
 
-pub(crate) trait ClassLoader {
+pub trait ClassLoader {
     fn load(&self, name: &str) -> Fallible<Class>;
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct InputClassLoader<P> {
+pub struct InputClassLoader<P> {
     inputs: HashMap<StrBuf, Arc<ClassFile>>,
     parent: P,
 }
@@ -58,7 +58,7 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct BootstrapClassLoader {
+pub struct BootstrapClassLoader {
     readers: Arc<Mutex<Vec<JarReader<File>>>>,
 }
 

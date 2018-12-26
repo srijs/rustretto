@@ -7,8 +7,8 @@ use failure::{bail, Fallible};
 use indexmap::{Equivalent, IndexMap};
 use strbuf::StrBuf;
 
-use crate::classes::ClassGraph;
-use crate::loader::Class;
+use frontend::classes::ClassGraph;
+use frontend::loader::Class;
 
 /*
 
@@ -25,7 +25,7 @@ value info:
 */
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct MethodDispatchKey {
+pub struct MethodDispatchKey {
     pub method_name: StrBuf,
     pub method_descriptor: MethodDescriptor,
 }
@@ -56,14 +56,14 @@ impl<'a> Equivalent<MethodDispatchKey> for LookupKey<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct MethodDispatchTarget {
+pub struct MethodDispatchTarget {
     pub class_name: StrBuf,
     pub is_abstract: bool,
     pub is_override: bool,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct VTable {
+pub struct VTable {
     table: Arc<IndexMap<MethodDispatchKey, MethodDispatchTarget>>,
 }
 
@@ -94,7 +94,7 @@ impl VTable {
 }
 
 #[derive(Clone)]
-pub(crate) struct VTableMap {
+pub struct VTableMap {
     classes: ClassGraph,
     inner: Arc<Mutex<HashMap<StrBuf, VTable>>>,
 }

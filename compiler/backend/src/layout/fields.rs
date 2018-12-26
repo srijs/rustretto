@@ -7,11 +7,11 @@ use failure::{bail, Fallible};
 use indexmap::{Equivalent, IndexMap};
 use strbuf::StrBuf;
 
-use crate::classes::ClassGraph;
-use crate::loader::Class;
+use frontend::classes::ClassGraph;
+use frontend::loader::Class;
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct FieldAccessKey {
+pub struct FieldAccessKey {
     pub field_name: StrBuf,
     pub field_type: FieldType,
 }
@@ -42,7 +42,7 @@ impl<'a> Equivalent<FieldAccessKey> for LookupKey<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct FieldLayout {
+pub struct FieldLayout {
     table: Arc<IndexMap<FieldAccessKey, ()>>,
 }
 
@@ -69,7 +69,7 @@ impl FieldLayout {
 }
 
 #[derive(Clone)]
-pub(crate) struct FieldLayoutMap {
+pub struct FieldLayoutMap {
     classes: ClassGraph,
     inner: Arc<Mutex<HashMap<StrBuf, FieldLayout>>>,
 }

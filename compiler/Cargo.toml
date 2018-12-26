@@ -7,14 +7,16 @@ edition = "2018"
 [dependencies]
 env_logger = { version = "0.5.13", default-features = false }
 failure = "0.1.2"
-fnv = "1.0.6"
-idna = "0.1.5"
-indexmap = "1.0.2"
 log = "0.4.6"
-petgraph = "0.4.13"
 structopt = "0.2.13"
 target-lexicon = "0.2.0"
 tempfile = "3.0.4"
+
+[dependencies.backend]
+path = "./backend"
+
+[dependencies.frontend]
+path = "./frontend"
 
 [dependencies.strbuf]
 path = "../crates/strbuf"
@@ -30,8 +32,6 @@ path = "../crates/llvm"
 
 [dev-dependencies]
 assert_cli = "0.6.3"
-cpp_demangle = "0.2.12"
-regex = "1.1.0"
 serde = "1.0.82"
 serde_derive = "1.0.82"
 serde_yaml = "0.8.8"

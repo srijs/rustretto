@@ -1,0 +1,19 @@
+[package]
+name = "frontend"
+version = "0.1.0"
+authors = ["Sam Rijs <srijs@airpost.net>"]
+edition = "2018"
+
+[dependencies]
+failure = "0.1.2"
+log = "0.4.6"
+petgraph = "0.4.13"
+
+[dependencies.strbuf]
+path = "../../crates/strbuf"
+
+[dependencies.classfile]
+path = "../../crates/classfile"
+
+[dependencies.jar]
+path = "../../crates/jar"

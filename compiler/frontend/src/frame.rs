@@ -4,7 +4,7 @@ use crate::translate::{Op, VarId, VarIdGen};
 use crate::types::Type;
 
 #[derive(Clone, Debug)]
-pub(crate) struct StackAndLocals {
+pub struct StackAndLocals {
     pub stack: Vec<Op>,
     pub locals: BTreeMap<usize, Op>,
 }

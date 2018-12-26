@@ -9,39 +9,41 @@ use classfile::descriptors::{
 };
 use classfile::{ClassFile, ConstantIndex, ConstantPool, FieldRef, Method};
 use failure::{bail, Fallible};
-use llvm::codegen::{TargetDataLayout, TargetMachine, TargetTriple};
 use strbuf::StrBuf;
 
-use crate::blocks::BlockGraph;
-use crate::classes::ClassGraph;
-use crate::layout::{FieldLayoutMap, VTableMap};
-use crate::loader::Class;
-use crate::mangle;
-use crate::translate::{
+use frontend::blocks::BlockGraph;
+use frontend::classes::ClassGraph;
+use frontend::loader::Class;
+use frontend::translate::{
     AComparator, BasicBlock, BlockId, BranchStub, Const, Expr, IComparator, InvokeExpr,
     InvokeTarget, Op, Statement, Switch, VarId,
 };
-use crate::types::Type;
+use frontend::types::Type;
 
-pub(crate) struct CodeGen {
+use crate::mangle;
+use crate::layout::{FieldLayoutMap, VTableMap};
+
+pub struct Target {
+    pub triple: String,
+    pub data_layout: String
+}
+
+pub struct CodeGen {
     classes: ClassGraph,
     vtables: VTableMap,
     field_layouts: FieldLayoutMap,
-    machine: Arc<TargetMachine>,
-    data_layout: TargetDataLayout,
+    target: Arc<Target>
 }
 
 impl CodeGen {
-    pub fn new(classes: ClassGraph, machine: Arc<TargetMachine>) -> Fallible<Self> {
+    pub fn new(classes: ClassGraph, target: Target) -> Fallible<Self> {
         let vtables = VTableMap::new(classes.clone());
         let field_layouts = FieldLayoutMap::new(classes.clone());
-        let data_layout = machine.data_layout();
         Ok(CodeGen {
             classes,
             vtables,
             field_layouts,
-            machine,
-            data_layout,
+            target: Arc::new(target)
         })
     }
 
@@ -63,29 +65,27 @@ impl CodeGen {
             vtables: self.vtables.clone(),
             field_layouts: self.field_layouts.clone(),
             var_id_gen: TmpVarIdGen::new(),
-            target_triple: self.machine.triple(),
-            target_data_layout: self.data_layout.to_string_rep(),
+            target: self.target.clone(),
         })
     }
 }
 
-pub(crate) struct ClassCodeGen {
+pub struct ClassCodeGen {
     out: String,
     class: Arc<ClassFile>,
     classes: ClassGraph,
     vtables: VTableMap,
     field_layouts: FieldLayoutMap,
     var_id_gen: TmpVarIdGen,
-    target_triple: TargetTriple,
-    target_data_layout: llvm::Message,
+    target: Arc<Target>,
 }
 
 impl ClassCodeGen {
-    pub(crate) fn finish(self) -> String {
+    pub fn finish(self) -> String {
         self.out
     }
 
-    pub(crate) fn gen_main(&mut self) -> Fallible<()> {
+    pub fn gen_main(&mut self) -> Fallible<()> {
         let class_name = self
             .class
             .constant_pool
@@ -111,7 +111,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
+    pub fn gen_vtable_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
         writeln!(
             self.out,
@@ -133,7 +133,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_object_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
+    pub fn gen_object_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let field_layout = self.field_layouts.get(class_name)?;
         writeln!(
             self.out,
@@ -155,7 +155,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_const(&mut self, class_name: &StrBuf) -> Fallible<()> {
+    pub fn gen_vtable_const(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
         let vtable_name = mangle::mangle_vtable_name(class_name);
 
@@ -187,7 +187,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_vtable_decls(&mut self, class_name: &StrBuf) -> Fallible<()> {
+    pub fn gen_vtable_decls(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let vtable = self.vtables.get(class_name)?;
 
         for (key, target) in vtable.iter() {
@@ -215,7 +215,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_extern_decls(&mut self, class: &ClassFile) -> Fallible<()> {
+    pub fn gen_extern_decls(&mut self, class: &ClassFile) -> Fallible<()> {
         let class_name = class.get_name();
         let vtable_name = mangle::mangle_vtable_name(class_name);
 
@@ -278,7 +278,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_prelude(&mut self) -> Fallible<()> {
+    pub fn gen_prelude(&mut self) -> Fallible<()> {
         let filename = self.class.attributes.get::<SourceFile>()?;
 
         writeln!(self.out, "; ModuleID = '{}'", self.class.get_name())?;
@@ -286,9 +286,9 @@ impl ClassCodeGen {
         writeln!(
             self.out,
             "target datalayout = \"{}\"",
-            self.target_data_layout
+            self.target.data_layout
         )?;
-        writeln!(self.out, "target triple = \"{}\"", self.target_triple)?;
+        writeln!(self.out, "target triple = \"{}\"", self.target.triple)?;
         writeln!(self.out, "")?;
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
@@ -320,7 +320,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_method(
+    pub fn gen_method(
         &mut self,
         method: &Method,
         blocks: &BlockGraph,
@@ -844,7 +844,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_native_method(
+    pub fn gen_native_method(
         &mut self,
         method: &Method,
         args: &[VarId],
@@ -875,7 +875,7 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub(crate) fn gen_class_init(&mut self) -> Fallible<()> {
+    pub fn gen_class_init(&mut self) -> Fallible<()> {
         let mangled_name = mangle::mangle_method_name(
             self.class.get_name(),
             "<clinit>",

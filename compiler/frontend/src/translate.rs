@@ -68,21 +68,21 @@ enum InvokeType {
 }
 
 #[derive(Debug)]
-pub(crate) enum InvokeTarget {
+pub enum InvokeTarget {
     Static,
     Special(Op),
     Virtual(Op),
 }
 
 #[derive(Debug)]
-pub(crate) struct InvokeExpr {
+pub struct InvokeExpr {
     pub target: InvokeTarget,
     pub index: ConstantIndex,
     pub args: Vec<Op>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Const {
+pub enum Const {
     Int(i32),
     Long(i64),
     Null,
@@ -99,7 +99,7 @@ impl Const {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum Op {
+pub enum Op {
     Var(VarId),
     Const(Const),
 }
@@ -114,7 +114,7 @@ impl Op {
 }
 
 #[derive(Debug)]
-pub(crate) enum Expr {
+pub enum Expr {
     String(ConstantIndex),
     GetStatic(ConstantIndex),
     GetField(Op, ConstantIndex),
@@ -126,10 +126,10 @@ pub(crate) enum Expr {
 }
 
 #[derive(Debug)]
-pub(crate) struct ExceptionHandlers; // TODO
+pub struct ExceptionHandlers; // TODO
 
 #[derive(Debug)]
-pub(crate) enum IComparator {
+pub enum IComparator {
     Lt,
     Le,
     Eq,
@@ -137,20 +137,20 @@ pub(crate) enum IComparator {
 }
 
 #[derive(Debug)]
-pub(crate) enum AComparator {
+pub enum AComparator {
     Eq,
     Ne,
 }
 
 #[derive(Debug)]
-pub(crate) struct Switch {
+pub struct Switch {
     pub value: Op,
     pub default: BlockId,
     pub cases: Vec<(i32, BlockId)>,
 }
 
 #[derive(Debug)]
-pub(crate) enum BranchStub {
+pub enum BranchStub {
     Goto(BlockId),
     IfICmp(IComparator, Op, Op, BlockId, BlockId),
     IfACmp(AComparator, Op, Op, BlockId, BlockId),
@@ -160,13 +160,13 @@ pub(crate) enum BranchStub {
 }
 
 #[derive(Debug)]
-pub(crate) struct Statement {
+pub struct Statement {
     pub assign: Option<VarId>,
     pub expression: Expr,
 }
 
 #[derive(Debug)]
-pub(crate) struct BasicBlock {
+pub struct BasicBlock {
     pub address: BlockId,
     pub incoming: StackAndLocals,
     pub statements: Vec<Statement>,
@@ -566,7 +566,7 @@ fn translate_block(
     }
 }
 
-pub(crate) fn translate_method(
+pub fn translate_method(
     dasm: Disassembler,
     incoming: StackAndLocals,
     consts: &ConstantPool,
