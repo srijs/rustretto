@@ -1,47 +1,53 @@
+use classfile::instructions::ArrayType;
 use classfile::FieldType;
-use strbuf::StrBuf;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
-    Top,
-    Integer,
-    Float,
+    Boolean,
+    Char,
+    Byte,
+    Short,
+    Int,
     Long,
+    Float,
     Double,
-    Null,
-    Object(StrBuf),
-    Uninitialized,
-    UninitializedThis,
+    Reference,
 }
 
 impl Type {
-    pub fn int() -> Self {
-        Type::Integer
+    pub fn from_array_type(atype: &ArrayType) -> Type {
+        match atype {
+            ArrayType::Boolean => Type::Boolean,
+            ArrayType::Char => Type::Char,
+            ArrayType::Float => Type::Float,
+            ArrayType::Double => Type::Double,
+            ArrayType::Byte => Type::Byte,
+            ArrayType::Short => Type::Short,
+            ArrayType::Int => Type::Int,
+            ArrayType::Long => Type::Long,
+        }
     }
 
-    pub fn string() -> Self {
-        Type::Object(StrBuf::new("java.lang.String"))
-    }
-
-    pub fn from_field_type(field_type: FieldType) -> Self {
+    pub fn from_field_type(field_type: &FieldType) -> Self {
         use classfile::descriptors::BaseType;
 
         match field_type {
             FieldType::Base(base_type) => match base_type {
-                BaseType::Byte => Type::Integer,
-                BaseType::Char => Type::Integer,
-                BaseType::Short => Type::Integer,
-                BaseType::Boolean => Type::Integer,
-                BaseType::Int => Type::Integer,
+                BaseType::Byte => Type::Byte,
+                BaseType::Char => Type::Char,
+                BaseType::Short => Type::Short,
+                BaseType::Boolean => Type::Boolean,
+                BaseType::Int => Type::Int,
                 BaseType::Float => Type::Float,
                 BaseType::Long => Type::Long,
                 BaseType::Double => Type::Double,
             },
-            FieldType::Object(object_type) => Type::Object(StrBuf::new(&object_type.class_name)),
-            FieldType::Array(array_type) => {
-                let class_name = format!("[{}", array_type.component_type.to_string());
-                Type::Object(StrBuf::new(&class_name))
-            }
+            FieldType::Object(_) => Type::Reference,
+            FieldType::Array(_) => Type::Reference,
         }
+    }
+
+    pub fn can_unify_naive(&self, other: &Self) -> bool {
+        self == other
     }
 }

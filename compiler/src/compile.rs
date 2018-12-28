@@ -65,14 +65,14 @@ impl Compiler {
             let mut args = Vec::new();
             let mut var_id_gen = VarIdGen::new();
             if &**name == "<init>" {
-                let arg_type = Type::UninitializedThis;
+                let arg_type = Type::Reference;
                 args.push(var_id_gen.gen(arg_type));
             } else if !method.is_static() {
-                let arg_type = Type::Object(class_name.clone());
+                let arg_type = Type::Reference;
                 args.push(var_id_gen.gen(arg_type));
             }
             for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {
-                args.push(var_id_gen.gen(Type::from_field_type(field_type.clone())));
+                args.push(var_id_gen.gen(Type::from_field_type(field_type)));
             }
 
             if method.is_native() {

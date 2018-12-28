@@ -51,7 +51,9 @@ impl InstructionBlock {
                 | Instr::IfLt(offset)
                 | Instr::IfEq(offset)
                 | Instr::IfGe(offset)
+                | Instr::IfGt(offset)
                 | Instr::IfICmpGe(offset)
+                | Instr::IfICmpGt(offset)
                 | Instr::IfICmpLe(offset)
                 | Instr::IfACmpNe(offset) => {
                     let if_addr = (curr_addr as i64 + offset as i64) as u32;

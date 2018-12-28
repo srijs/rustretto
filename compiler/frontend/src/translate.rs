@@ -35,14 +35,8 @@ impl fmt::Display for BlockId {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VarId(pub Type, pub u64);
-
-impl fmt::Debug for VarId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "v{}", self.1)
-    }
-}
 
 pub struct VarIdGen {
     next_id: u64,
@@ -91,9 +85,9 @@ pub enum Const {
 impl Const {
     pub fn get_type(&self) -> Type {
         match self {
-            Const::Int(_) => Type::Integer,
+            Const::Int(_) => Type::Int,
             Const::Long(_) => Type::Long,
-            Const::Null => Type::Null,
+            Const::Null => Type::Reference,
         }
     }
 }
@@ -123,6 +117,11 @@ pub enum Expr {
     New(StrBuf),
     LCmp(Op, Op),
     Add(Type, Op, Op),
+    Sub(Type, Op, Op),
+    ArrayNew(Type, Op),
+    ArrayLength(Op),
+    ArrayLoad(Type, Op, Op),
+    ArrayStore(Type, Op, Op, Op),
 }
 
 #[derive(Debug)]
@@ -134,6 +133,7 @@ pub enum IComparator {
     Le,
     Eq,
     Ge,
+    Gt,
 }
 
 #[derive(Debug)]
@@ -213,7 +213,9 @@ impl<'a> TranslateInstr<'a> {
             .consts
             .get_field_ref(ConstantIndex::from_u16(idx))
             .unwrap();
-        let var = self.var_id_gen.gen(Type::from_field_type(field.descriptor));
+        let var = self
+            .var_id_gen
+            .gen(Type::from_field_type(&field.descriptor));
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
@@ -228,7 +230,9 @@ impl<'a> TranslateInstr<'a> {
             .consts
             .get_field_ref(ConstantIndex::from_u16(idx))
             .unwrap();
-        let var = self.var_id_gen.gen(Type::from_field_type(field.descriptor));
+        let var = self
+            .var_id_gen
+            .gen(Type::from_field_type(&field.descriptor));
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
@@ -244,7 +248,9 @@ impl<'a> TranslateInstr<'a> {
             .consts
             .get_field_ref(ConstantIndex::from_u16(idx))
             .unwrap();
-        let var = self.var_id_gen.gen(Type::from_field_type(field.descriptor));
+        let var = self
+            .var_id_gen
+            .gen(Type::from_field_type(&field.descriptor));
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
@@ -256,7 +262,7 @@ impl<'a> TranslateInstr<'a> {
     fn load_const(&mut self, idx: u16) {
         match self.consts.get_info(ConstantIndex::from_u16(idx)).unwrap() {
             Constant::String(ref string_const) => {
-                let var = self.var_id_gen.gen(Type::string());
+                let var = self.var_id_gen.gen(Type::Reference);
                 self.state.push(Op::Var(var.clone()));
                 let statement = Statement {
                     assign: Some(var),
@@ -277,7 +283,7 @@ impl<'a> TranslateInstr<'a> {
     fn lcmp(&mut self) {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
-        let var = self.var_id_gen.gen(Type::Integer);
+        let var = self.var_id_gen.gen(Type::Int);
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
@@ -299,15 +305,28 @@ impl<'a> TranslateInstr<'a> {
         self.stmts.push(statement);
     }
 
+    fn sub(&mut self) {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        assert_eq!(value1.get_type(), value2.get_type(), "type mismatch");
+        let var = self.var_id_gen.gen(value1.get_type());
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::Sub(value1.get_type(), value1, value2),
+        };
+        self.stmts.push(statement);
+    }
+
     fn iinc(&mut self, idx: u8, int: i32) {
-        let var2 = self.var_id_gen.gen(Type::int());
+        let var2 = self.var_id_gen.gen(Type::Int);
         let var1 = self.state.locals[&(idx as usize)].clone();
         self.state
             .locals
             .insert(idx as usize, Op::Var(var2.clone()));
         let statement = Statement {
             assign: Some(var2),
-            expression: Expr::Add(Type::Integer, var1, Op::Const(Const::Int(int))),
+            expression: Expr::Add(Type::Int, var1, Op::Const(Const::Int(int))),
         };
         self.stmts.push(statement);
     }
@@ -336,7 +355,7 @@ impl<'a> TranslateInstr<'a> {
         };
         let return_type = match method.descriptor.ret {
             ReturnTypeDescriptor::Void => None,
-            ReturnTypeDescriptor::Field(field_type) => Some(Type::from_field_type(field_type)),
+            ReturnTypeDescriptor::Field(field_type) => Some(Type::from_field_type(&field_type)),
         };
         let return_var = return_type.map(|t| self.var_id_gen.gen(t));
         if let Some(ref var) = return_var {
@@ -345,6 +364,51 @@ impl<'a> TranslateInstr<'a> {
         let statement = Statement {
             assign: return_var,
             expression: Expr::Invoke(expr),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn array_new(&mut self, component_type: Type) {
+        let count = self.state.pop();
+        let var = self.var_id_gen.gen(Type::Reference);
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::ArrayNew(component_type, count),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn array_length(&mut self) {
+        let arrayref = self.state.pop();
+        let var = self.var_id_gen.gen(Type::Int);
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::ArrayLength(arrayref),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn array_load(&mut self, component_type: Type) {
+        let index = self.state.pop();
+        let arrayref = self.state.pop();
+        let var = self.var_id_gen.gen(component_type.clone());
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::ArrayLoad(component_type, arrayref, index),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn array_store(&mut self, component_type: Type) {
+        let value = self.state.pop();
+        let index = self.state.pop();
+        let arrayref = self.state.pop();
+        let statement = Statement {
+            assign: None,
+            expression: Expr::ArrayStore(component_type, arrayref, index, value),
         };
         self.stmts.push(statement);
     }
@@ -405,7 +469,7 @@ impl<'a> TranslateInstr<'a> {
     fn new(&mut self, idx: u16) {
         let class = self.consts.get_class(ConstantIndex::from_u16(idx)).unwrap();
         let class_name = self.consts.get_utf8(class.name_index).unwrap();
-        let var = self.var_id_gen.gen(Type::Object(class_name.clone()));
+        let var = self.var_id_gen.gen(Type::Reference);
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
@@ -468,11 +532,14 @@ fn translate_next(
             stmts,
         };
         match instr {
+            // stack manipulation operations
             Instr::ALoad0 => t.load(0),
             Instr::ALoad1 => t.load(1),
             Instr::ALoad2 => t.load(2),
+            Instr::ALoad(idx) => t.load(*idx as usize),
             Instr::AStore1 => t.store(1),
             Instr::AStore2 => t.store(2),
+            Instr::AStore(idx) => t.store(*idx as usize),
             Instr::ILoad(idx) => t.load(*idx as usize),
             Instr::IStore(idx) => t.store(*idx as usize),
             Instr::LLoad(idx) => t.load(*idx as usize),
@@ -480,43 +547,61 @@ fn translate_next(
             Instr::Dup => t.duplicate(),
             Instr::Pop => t.pop(1),
             Instr::Pop2 => t.pop(2),
+            // arithmetic operations
+            Instr::LCmp => t.lcmp(),
+            Instr::LAdd => t.add(),
+            Instr::IAdd => t.add(),
+            Instr::ISub => t.sub(),
+            Instr::IInc(idx, int) => t.iinc(*idx, *int as i32),
+            // object operations
+            Instr::New(idx) => t.new(*idx),
+            // field operations
+            Instr::GetStatic(idx) => t.get_static(*idx),
+            Instr::GetField(idx) => t.get_field(*idx),
+            Instr::PutField(idx) => t.put_field(*idx),
+            // array operations
+            Instr::ANewArray(_) => t.array_new(Type::Reference),
+            Instr::NewArray(atype) => t.array_new(Type::from_array_type(atype)),
+            Instr::ArrayLength => t.array_length(),
+            Instr::IaLoad => t.array_load(Type::Int),
+            Instr::AaLoad => t.array_load(Type::Reference),
+            Instr::AaStore => t.array_store(Type::Reference),
+            // contant load operations
+            Instr::LdC(idx) => t.load_const(*idx as u16),
+            Instr::LdCW(idx) => t.load_const(*idx),
+            Instr::LdC2W(idx) => t.load_const(*idx),
             Instr::IConst0 => t.push_const(Const::Int(0)),
             Instr::IConst1 => t.push_const(Const::Int(1)),
             Instr::IConst2 => t.push_const(Const::Int(2)),
             Instr::IConst3 => t.push_const(Const::Int(3)),
+            Instr::IConst4 => t.push_const(Const::Int(4)),
             Instr::LConst0 => t.push_const(Const::Long(0)),
             Instr::LConst1 => t.push_const(Const::Long(1)),
             Instr::AConstNull => t.push_const(Const::Null),
             Instr::BiPush(b) => t.push_const(Const::Int(*b as i32)),
-            Instr::IInc(idx, int) => t.iinc(*idx, *int as i32),
-            Instr::GetStatic(idx) => t.get_static(*idx),
-            Instr::GetField(idx) => t.get_field(*idx),
-            Instr::PutField(idx) => t.put_field(*idx),
-            Instr::LdC(idx) => t.load_const(*idx as u16),
-            Instr::LdCW(idx) => t.load_const(*idx),
-            Instr::LdC2W(idx) => t.load_const(*idx),
+            // invoke operations
             Instr::InvokeSpecial(idx) => t.invoke(InvokeType::Special, *idx),
             Instr::InvokeStatic(idx) => t.invoke(InvokeType::Static, *idx),
             Instr::InvokeVirtual(idx) => t.invoke(InvokeType::Virtual, *idx),
+            // branch operations
             Instr::Goto(offset) => return t.goto(*offset),
             Instr::Return => return t.ret(false),
             Instr::IReturn => return t.ret(true),
             Instr::AReturn => return t.ret(true),
+            Instr::AThrow => return t.athrow(),
             Instr::IfLt(offset) => return t.if_zcmp(*offset, IComparator::Lt),
             Instr::IfLe(offset) => return t.if_zcmp(*offset, IComparator::Le),
             Instr::IfEq(offset) => return t.if_zcmp(*offset, IComparator::Eq),
             Instr::IfGe(offset) => return t.if_zcmp(*offset, IComparator::Ge),
-            Instr::IfICmpGe(offset) => return t.if_icmp(*offset, IComparator::Ge),
+            Instr::IfGt(offset) => return t.if_zcmp(*offset, IComparator::Gt),
             Instr::IfICmpLe(offset) => return t.if_icmp(*offset, IComparator::Le),
+            Instr::IfICmpGe(offset) => return t.if_icmp(*offset, IComparator::Ge),
+            Instr::IfICmpGt(offset) => return t.if_icmp(*offset, IComparator::Gt),
             Instr::IfACmpEq(offset) => return t.if_acmp(*offset, AComparator::Eq),
             Instr::IfACmpNe(offset) => return t.if_acmp(*offset, AComparator::Ne),
-            Instr::New(idx) => t.new(*idx),
             Instr::TableSwitch(table) => return t.table_switch(table),
             Instr::LookupSwitch(lookup) => return t.lookup_switch(lookup),
-            Instr::LCmp => t.lcmp(),
-            Instr::LAdd => t.add(),
-            Instr::IAdd => t.add(),
-            Instr::AThrow => return t.athrow(),
+            // misc operations
             _ => bail!("unsupported instruction {:?}", instr),
         }
     }

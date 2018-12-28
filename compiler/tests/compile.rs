@@ -12,5 +12,6 @@ cases! {
     lookup_switch,
     compare_long,
     compare_address,
-    fields
+    fields,
+    array
 }

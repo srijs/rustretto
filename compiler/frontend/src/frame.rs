@@ -76,14 +76,14 @@ mod tests {
         let mut gen = VarIdGen::new();
         let args = vec![
             gen.gen(Type::Long),
-            gen.gen(Type::Integer),
+            gen.gen(Type::Int),
             gen.gen(Type::Double),
             gen.gen(Type::Float),
         ];
         let frame = StackAndLocals::new(0, 6, &args);
 
         assert_eq!(frame.locals[&0].get_type(), Type::Long);
-        assert_eq!(frame.locals[&2].get_type(), Type::Integer);
+        assert_eq!(frame.locals[&2].get_type(), Type::Int);
         assert_eq!(frame.locals[&3].get_type(), Type::Double);
         assert_eq!(frame.locals[&5].get_type(), Type::Float);
     }

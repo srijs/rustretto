@@ -1,0 +1,13 @@
+source: |
+    public class Test {
+        public static void main(String[] args) {
+            String[] strings = {
+                "Foo", "Bar", "Baz", "Quux"
+            };
+
+            for (String string : strings) {
+                System.out.println(string);
+            }
+        }
+    }
+output: "Foo\nBar\nBaz\nQuux\n"

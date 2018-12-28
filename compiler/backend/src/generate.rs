@@ -13,7 +13,7 @@ use strbuf::StrBuf;
 
 use frontend::blocks::BlockGraph;
 use frontend::classes::ClassGraph;
-use frontend::loader::Class;
+use frontend::loader::{ArrayClass, Class};
 use frontend::translate::{
     AComparator, BasicBlock, BlockId, BranchStub, Const, Expr, IComparator, InvokeExpr,
     InvokeTarget, Op, Statement, Switch, VarId,
@@ -134,6 +134,33 @@ impl ClassCodeGen {
     }
 
     pub fn gen_object_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
+        match self.classes.get(class_name)? {
+            Class::File(_) => self.gen_object_struct_type(class_name),
+            Class::Array(array_class) => self.gen_object_array_type(class_name, array_class),
+        }
+    }
+
+    fn gen_object_array_type(
+        &mut self,
+        class_name: &StrBuf,
+        array_class: ArrayClass,
+    ) -> Fallible<()> {
+        writeln!(
+            self.out,
+            "%{} = type {{",
+            mangle::mangle_class_name(class_name)
+        )?;
+        writeln!(self.out, "  i32, ; length")?;
+        writeln!(
+            self.out,
+            "  [0 x {}] ; members",
+            tlt_array_class_component_type(&array_class)
+        )?;
+        writeln!(self.out, "}}")?;
+        Ok(())
+    }
+
+    fn gen_object_struct_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
         let field_layout = self.field_layouts.get(class_name)?;
         writeln!(
             self.out,
@@ -234,10 +261,10 @@ impl ClassCodeGen {
 
             let mut args = vec![];
             if !method.is_static() {
-                args.push(Type::UninitializedThis);
+                args.push(Type::Reference);
             }
             for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {
-                args.push(Type::from_field_type(field_type.clone()));
+                args.push(Type::from_field_type(field_type));
             }
 
             write!(
@@ -415,10 +442,11 @@ impl ClassCodeGen {
     ) -> Fallible<()> {
         let tmpid = self.var_id_gen.gen();
         let code = match comp {
+            IComparator::Lt => "slt",
+            IComparator::Le => "sle",
             IComparator::Eq => "eq",
             IComparator::Ge => "sge",
-            IComparator::Le => "sle",
-            IComparator::Lt => "slt",
+            IComparator::Gt => "sgt",
         };
         writeln!(
             self.out,
@@ -523,8 +551,26 @@ impl ClassCodeGen {
                     )?;
                 }
             }
+            Expr::Sub(typ, var1, var2) => {
+                if let Dest::Assign(assign) = dest {
+                    writeln!(
+                        self.out,
+                        "  {} = sub {} {}, {}",
+                        assign,
+                        tlt_type(&typ),
+                        OpVal(var1),
+                        OpVal(var2)
+                    )?;
+                }
+            }
             Expr::LCmp(var1, var2) => self.gen_cmp_long(var1, var2, dest)?,
             Expr::New(class_name) => self.gen_expr_new(class_name, dest)?,
+            Expr::ArrayNew(ctyp, count) => self.gen_expr_array_new(ctyp, count, dest)?,
+            Expr::ArrayLength(aref) => self.gen_expr_array_length(aref, dest)?,
+            Expr::ArrayLoad(ctyp, aref, idx) => self.gen_expr_array_load(ctyp, aref, idx, dest)?,
+            Expr::ArrayStore(ctyp, aref, idx, val) => {
+                self.gen_expr_array_store(ctyp, aref, idx, val)?
+            }
         }
         Ok(())
     }
@@ -681,6 +727,136 @@ impl ClassCodeGen {
         Ok(())
     }
 
+    fn gen_expr_array_new(&mut self, ctyp: &Type, count: &Op, dest: Dest) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let component_type = tlt_array_component_type(ctyp);
+
+            let tmp_component_size_ptr = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = getelementptr {ctyp}, {ctyp}* null, i64 1",
+                tmp_component_size_ptr,
+                ctyp = component_type
+            )?;
+            let tmp_component_size_int = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = ptrtoint {ctyp}* %t{} to i64",
+                tmp_component_size_int,
+                tmp_component_size_ptr,
+                ctyp = component_type
+            )?;
+            let tmp_count_wide = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = zext i32 {} to i64",
+                tmp_count_wide,
+                OpVal(count)
+            )?;
+            let tmp_components_size_int = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = mul i64 %t{}, %t{}",
+                tmp_components_size_int, tmp_component_size_int, tmp_count_wide
+            )?;
+            let tmp_total_size_int = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = add i64 %t{}, 64",
+                tmp_total_size_int, tmp_components_size_int
+            )?;
+            writeln!(
+                self.out,
+                "  {} = call %ref @_Jrt_new(i64 %t{}, i8* bitcast (%{vtable}* @{vtable} to i8*))",
+                assign,
+                tmp_total_size_int,
+                vtable = mangle::mangle_vtable_name("java/lang/Object")
+            )?;
+            if let DestAssign::Var(assign_op) = assign {
+                let tmp_length_ptr = self.var_id_gen.gen();
+                self.gen_get_array_length_ptr(
+                    &Op::Var(assign_op),
+                    Dest::Assign(DestAssign::Tmp(tmp_length_ptr)),
+                )?;
+                writeln!(
+                    self.out,
+                    "store i32 {}, i32* %t{}",
+                    OpVal(count),
+                    tmp_length_ptr
+                )?;
+            } else {
+                bail!("can't assign array to tmp dest");
+            }
+        }
+        Ok(())
+    }
+
+    fn gen_expr_array_length(&mut self, aref: &Op, dest: Dest) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let tmp_length_ptr = self.var_id_gen.gen();
+            self.gen_get_array_length_ptr(aref, Dest::Assign(DestAssign::Tmp(tmp_length_ptr)))?;
+
+            writeln!(
+                self.out,
+                "  {} = load i32, i32* %t{}",
+                assign, tmp_length_ptr
+            )?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_array_load(
+        &mut self,
+        ctyp: &Type,
+        aref: &Op,
+        idx: &Op,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let tmp_array_ptr = self.var_id_gen.gen();
+            let component_type = self.gen_get_array_ptr(
+                ctyp,
+                aref,
+                idx,
+                Dest::Assign(DestAssign::Tmp(tmp_array_ptr)),
+            )?;
+
+            writeln!(
+                self.out,
+                "  {} = load {ctyp}, {ctyp}* %t{}",
+                assign,
+                tmp_array_ptr,
+                ctyp = component_type
+            )?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_array_store(
+        &mut self,
+        ctyp: &Type,
+        aref: &Op,
+        idx: &Op,
+        value: &Op,
+    ) -> Fallible<()> {
+        let tmp_array_ptr = self.var_id_gen.gen();
+        let component_type = self.gen_get_array_ptr(
+            ctyp,
+            aref,
+            idx,
+            Dest::Assign(DestAssign::Tmp(tmp_array_ptr)),
+        )?;
+
+        writeln!(
+            self.out,
+            "  store {ctyp} {}, {ctyp}* %t{}",
+            OpVal(value),
+            tmp_array_ptr,
+            ctyp = component_type
+        )?;
+        Ok(())
+    }
+
     fn gen_expr_get_static(
         &mut self,
         index: ConstantIndex,
@@ -755,6 +931,66 @@ impl ClassCodeGen {
         Ok(())
     }
 
+    fn gen_get_array_length_ptr(&mut self, aref: &Op, dest: Dest) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let tmp_object_ptr = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = extractvalue %ref {}, 0",
+                tmp_object_ptr,
+                OpVal(aref)
+            )?;
+
+            writeln!(
+                self.out,
+                "  {} = bitcast i8* %t{} to i32*",
+                assign, tmp_object_ptr
+            )?;
+        }
+        Ok(())
+    }
+
+    fn gen_get_array_ptr(
+        &mut self,
+        ctyp: &Type,
+        aref: &Op,
+        idx: &Op,
+        dest: Dest,
+    ) -> Fallible<&'static str> {
+        let component_type = tlt_array_component_type(&ctyp);
+
+        if let Dest::Assign(assign) = dest {
+            let tmp_length_ptr = self.var_id_gen.gen();
+            self.gen_get_array_length_ptr(aref, Dest::Assign(DestAssign::Tmp(tmp_length_ptr)))?;
+
+            let tmp_member_start_ptr = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = getelementptr i32, i32* %t{}, i64 1",
+                tmp_member_start_ptr, tmp_length_ptr
+            )?;
+
+            let tmp_member_ptr = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = bitcast i32* %t{} to {ctyp}*",
+                tmp_member_ptr,
+                tmp_member_start_ptr,
+                ctyp = component_type
+            )?;
+
+            writeln!(
+                self.out,
+                "  {} = getelementptr {ctyp}, {ctyp}* %t{}, i32 {idx}",
+                assign,
+                tmp_member_ptr,
+                idx = OpVal(idx),
+                ctyp = component_type
+            )?;
+        }
+        Ok(component_type)
+    }
+
     fn gen_get_field_ptr(
         &mut self,
         object: &Op,
@@ -800,7 +1036,7 @@ impl ClassCodeGen {
 
     fn gen_phi_nodes(&mut self, block: &BasicBlock, blocks: &BlockGraph) -> Fallible<()> {
         let phis = blocks.phis(block);
-        for (var, bindings) in phis {
+        for (var, bindings) in phis.iter() {
             write!(self.out, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
             for (i, (out_var, addr)) in bindings.iter().enumerate() {
                 if i > 0 {
@@ -981,13 +1217,46 @@ fn tlt_field_type(field_type: &FieldType) -> &'static str {
     }
 }
 
-fn tlt_type(t: &Type) -> &'static str {
-    match t {
-        Type::Integer => "i32",
+fn tlt_array_class_component_type(array_class: &ArrayClass) -> &'static str {
+    match array_class {
+        ArrayClass::Complex(_) => "%ref",
+        ArrayClass::Primitive(base_type) => match base_type {
+            BaseType::Boolean => "i8",
+            BaseType::Byte => "i8",
+            BaseType::Char => "i8",
+            BaseType::Short => "i16",
+            BaseType::Int => "i32",
+            BaseType::Long => "i64",
+            BaseType::Float => "float",
+            BaseType::Double => "double",
+        },
+    }
+}
+
+fn tlt_array_component_type(ctyp: &Type) -> &'static str {
+    match ctyp {
+        Type::Boolean => "i8",
+        Type::Byte => "i8",
+        Type::Char => "i8",
+        Type::Short => "i16",
+        Type::Int => "i32",
         Type::Long => "i64",
         Type::Float => "float",
         Type::Double => "double",
-        Type::Null | Type::Object(_) | Type::UninitializedThis => "%ref",
-        _ => unimplemented!(),
+        Type::Reference => "%ref",
+    }
+}
+
+fn tlt_type(t: &Type) -> &'static str {
+    match t {
+        Type::Boolean => "i32",
+        Type::Byte => "i32",
+        Type::Char => "i32",
+        Type::Short => "i32",
+        Type::Int => "i32",
+        Type::Long => "i64",
+        Type::Float => "float",
+        Type::Double => "double",
+        Type::Reference => "%ref",
     }
 }

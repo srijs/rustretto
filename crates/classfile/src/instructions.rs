@@ -20,6 +20,18 @@ pub struct LookupSwitch {
 }
 
 #[derive(Clone, Debug)]
+pub enum ArrayType {
+    Boolean,
+    Char,
+    Float,
+    Double,
+    Byte,
+    Short,
+    Int,
+    Long,
+}
+
+#[derive(Clone, Debug)]
 pub enum Instr {
     AaLoad,
     AaStore,
@@ -177,7 +189,7 @@ pub enum Instr {
     MonitorExit,
     MultiNewArray(u16, u8),
     New(u16),
-    NewArray(u8),
+    NewArray(ArrayType),
     Nop,
     Pop,
     Pop2,
@@ -476,7 +488,7 @@ impl Disassembler {
             0xc3 => Instr::MonitorExit,
             0xc5 => unimplemented!("TODO: decode multianewarray"),
             0xbb => Instr::New(self.code.read_u16::<BigEndian>()?),
-            0xbc => Instr::NewArray(self.code.read_u8()?),
+            0xbc => Instr::NewArray(self.decode_array_type()?),
             0x00 => Instr::Nop,
             0x57 => Instr::Pop,
             0x58 => Instr::Pop2,
@@ -551,5 +563,19 @@ impl Disassembler {
         }
 
         Ok(LookupSwitch { default, pairs })
+    }
+
+    fn decode_array_type(&mut self) -> Fallible<ArrayType> {
+        match self.code.read_u8()? {
+            4 => Ok(ArrayType::Boolean),
+            5 => Ok(ArrayType::Char),
+            6 => Ok(ArrayType::Float),
+            7 => Ok(ArrayType::Double),
+            8 => Ok(ArrayType::Byte),
+            9 => Ok(ArrayType::Short),
+            10 => Ok(ArrayType::Int),
+            11 => Ok(ArrayType::Long),
+            x => bail!("unknown array type {}", x),
+        }
     }
 }

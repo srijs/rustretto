@@ -11,6 +11,49 @@ pub struct BlockGraph {
     addr_map: BTreeMap<BlockId, NodeIndex>,
 }
 
+pub struct PhiMap {
+    inner: BTreeMap<VarId, Option<Vec<(Op, BlockId)>>>,
+}
+
+impl PhiMap {
+    fn new() -> Self {
+        Self {
+            inner: BTreeMap::new(),
+        }
+    }
+
+    fn add(&mut self, left_op: &Op, right_op: &Op, addr: BlockId) {
+        if let Op::Var(left_var) = left_op {
+            if !left_var.0.can_unify_naive(&right_op.get_type()) {
+                // mark as unusable
+                self.inner.insert(left_var.clone(), None);
+            } else {
+                log::trace!(
+                    "adding binding {:?} from block {} for variable {:?}",
+                    right_op,
+                    addr,
+                    left_var
+                );
+
+                let entry = self
+                    .inner
+                    .entry(left_var.clone())
+                    .or_insert(Some(Vec::new()));
+
+                if let Some(ref mut bindings) = entry {
+                    bindings.push((right_op.clone(), addr));
+                }
+            }
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&VarId, &[(Op, BlockId)])> {
+        self.inner
+            .iter()
+            .filter_map(|(var, opt)| opt.as_ref().map(|bindings| (var, bindings.as_slice())))
+    }
+}
+
 impl BlockGraph {
     pub fn new() -> Self {
         BlockGraph {
@@ -73,21 +116,27 @@ impl BlockGraph {
         }
     }
 
-    pub fn phis(&self, block: &BasicBlock) -> BTreeMap<VarId, Vec<(Op, BlockId)>> {
-        let mut phis = BTreeMap::<VarId, Vec<(Op, BlockId)>>::new();
+    pub fn phis(&self, block: &BasicBlock) -> PhiMap {
+        log::trace!(
+            "collecting phi nodes for block at address {}",
+            block.address
+        );
+        let mut phis = PhiMap::new();
         for incoming_block in self.incoming(block.address) {
+            log::trace!(
+                "matching up incoming block at address {}",
+                incoming_block.address
+            );
             for (i, out_var) in incoming_block.outgoing.stack.iter().enumerate() {
-                if let Op::Var(var) = &block.incoming.stack[i] {
-                    phis.entry(var.clone())
-                        .or_default()
-                        .push((out_var.clone(), incoming_block.address));
+                log::trace!("looking up incoming stack variable ({}={:?})", i, out_var);
+                if let Some(op) = block.incoming.stack.get(i) {
+                    phis.add(op, out_var, incoming_block.address);
                 }
             }
             for (i, out_var) in incoming_block.outgoing.locals.iter() {
-                if let Op::Var(var) = &block.incoming.locals[i] {
-                    phis.entry(var.clone())
-                        .or_default()
-                        .push((out_var.clone(), incoming_block.address));
+                log::trace!("looking up incoming local variable ({}={:?})", i, out_var);
+                if let Some(op) = block.incoming.locals.get(i) {
+                    phis.add(op, out_var, incoming_block.address);
                 }
             }
         }
