@@ -15,8 +15,8 @@ use frontend::blocks::BlockGraph;
 use frontend::classes::ClassGraph;
 use frontend::loader::{ArrayClass, Class};
 use frontend::translate::{
-    AComparator, BasicBlock, BlockId, BranchStub, Const, Expr, IComparator, InvokeExpr,
-    InvokeTarget, Op, Statement, Switch, VarId,
+    AComparator, BasicBlock, BinaryExpr, BinaryOperation, BlockId, BranchStub, Const, ConvertExpr,
+    ConvertOperation, Expr, IComparator, InvokeExpr, InvokeTarget, Op, Statement, Switch, VarId,
 };
 use frontend::types::Type;
 
@@ -445,6 +445,7 @@ impl ClassCodeGen {
             IComparator::Lt => "slt",
             IComparator::Le => "sle",
             IComparator::Eq => "eq",
+            IComparator::Ne => "ne",
             IComparator::Ge => "sge",
             IComparator::Gt => "sgt",
         };
@@ -539,30 +540,7 @@ impl ClassCodeGen {
                 self.gen_expr_put_field(obj, *index, value, consts)?
             }
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
-            Expr::Add(typ, var1, var2) => {
-                if let Dest::Assign(assign) = dest {
-                    writeln!(
-                        self.out,
-                        "  {} = add {} {}, {}",
-                        assign,
-                        tlt_type(&typ),
-                        OpVal(var1),
-                        OpVal(var2)
-                    )?;
-                }
-            }
-            Expr::Sub(typ, var1, var2) => {
-                if let Dest::Assign(assign) = dest {
-                    writeln!(
-                        self.out,
-                        "  {} = sub {} {}, {}",
-                        assign,
-                        tlt_type(&typ),
-                        OpVal(var1),
-                        OpVal(var2)
-                    )?;
-                }
-            }
+            Expr::Binary(binary_expr) => self.gen_expr_binary(binary_expr, dest)?,
             Expr::LCmp(var1, var2) => self.gen_cmp_long(var1, var2, dest)?,
             Expr::New(class_name) => self.gen_expr_new(class_name, dest)?,
             Expr::ArrayNew(ctyp, count) => self.gen_expr_array_new(ctyp, count, dest)?,
@@ -571,6 +549,7 @@ impl ClassCodeGen {
             Expr::ArrayStore(ctyp, aref, idx, val) => {
                 self.gen_expr_array_store(ctyp, aref, idx, val)?
             }
+            Expr::Convert(conv_expr) => self.gen_expr_convert(conv_expr, dest)?,
         }
         Ok(())
     }
@@ -724,6 +703,74 @@ impl ClassCodeGen {
         }
 
         writeln!(self.out, ")")?;
+        Ok(())
+    }
+
+    fn gen_expr_binary(&mut self, binary_expr: &BinaryExpr, dest: Dest) -> Fallible<()> {
+        match binary_expr.operation {
+            BinaryOperation::Add => self.gen_expr_binary_simple("add", binary_expr, dest)?,
+            BinaryOperation::Sub => self.gen_expr_binary_simple("sub", binary_expr, dest)?,
+            BinaryOperation::BitwiseAnd => self.gen_expr_binary_simple("and", binary_expr, dest)?,
+            BinaryOperation::BitwiseOr => self.gen_expr_binary_simple("or", binary_expr, dest)?,
+            BinaryOperation::ShiftLeft => {
+                if let Dest::Assign(assign) = dest {
+                    let tmp_masked = self.var_id_gen.gen();
+                    writeln!(
+                        self.out,
+                        "  %t{} = and {} {}, 31",
+                        tmp_masked,
+                        tlt_type(&binary_expr.operand_right.get_type()),
+                        OpVal(&binary_expr.operand_right)
+                    )?;
+                    writeln!(
+                        self.out,
+                        "  {} = shl {} {}, %t{}",
+                        assign,
+                        tlt_type(&binary_expr.result_type),
+                        OpVal(&binary_expr.operand_left),
+                        tmp_masked
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn gen_expr_binary_simple(
+        &mut self,
+        operation: &str,
+        binary_expr: &BinaryExpr,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            writeln!(
+                self.out,
+                "  {} = {} {} {}, {}",
+                assign,
+                operation,
+                tlt_type(&binary_expr.result_type),
+                OpVal(&binary_expr.operand_left),
+                OpVal(&binary_expr.operand_right)
+            )?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_convert(&mut self, conv_expr: &ConvertExpr, dest: Dest) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            match conv_expr.operation {
+                ConvertOperation::IntToChar => {
+                    let tmp_trunc = self.var_id_gen.gen();
+                    writeln!(
+                        self.out,
+                        "  %t{} = trunc i32 {} to i8",
+                        tmp_trunc,
+                        OpVal(&conv_expr.operand)
+                    )?;
+                    writeln!(self.out, "  {} = zext i8 %t{} to i32", assign, tmp_trunc)?;
+                }
+            }
+        }
         Ok(())
     }
 

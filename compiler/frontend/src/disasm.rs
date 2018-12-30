@@ -50,6 +50,7 @@ impl InstructionBlock {
                 Instr::IfLe(offset)
                 | Instr::IfLt(offset)
                 | Instr::IfEq(offset)
+                | Instr::IfNe(offset)
                 | Instr::IfGe(offset)
                 | Instr::IfGt(offset)
                 | Instr::IfICmpGe(offset)

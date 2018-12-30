@@ -108,6 +108,34 @@ impl Op {
 }
 
 #[derive(Debug)]
+pub enum BinaryOperation {
+    Add,
+    Sub,
+    BitwiseAnd,
+    BitwiseOr,
+    ShiftLeft,
+}
+
+#[derive(Debug)]
+pub struct BinaryExpr {
+    pub operation: BinaryOperation,
+    pub result_type: Type,
+    pub operand_left: Op,
+    pub operand_right: Op,
+}
+
+#[derive(Debug)]
+pub enum ConvertOperation {
+    IntToChar,
+}
+
+#[derive(Debug)]
+pub struct ConvertExpr {
+    pub operation: ConvertOperation,
+    pub operand: Op,
+}
+
+#[derive(Debug)]
 pub enum Expr {
     String(ConstantIndex),
     GetStatic(ConstantIndex),
@@ -116,12 +144,12 @@ pub enum Expr {
     Invoke(InvokeExpr),
     New(StrBuf),
     LCmp(Op, Op),
-    Add(Type, Op, Op),
-    Sub(Type, Op, Op),
+    Binary(BinaryExpr),
     ArrayNew(Type, Op),
     ArrayLength(Op),
     ArrayLoad(Type, Op, Op),
     ArrayStore(Type, Op, Op, Op),
+    Convert(ConvertExpr),
 }
 
 #[derive(Debug)]
@@ -132,6 +160,7 @@ pub enum IComparator {
     Lt,
     Le,
     Eq,
+    Ne,
     Ge,
     Gt,
 }
@@ -292,28 +321,20 @@ impl<'a> TranslateInstr<'a> {
         self.stmts.push(statement);
     }
 
-    fn add(&mut self) {
+    fn binary(&mut self, result_type: Type, operation: BinaryOperation) {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
-        assert_eq!(value1.get_type(), value2.get_type(), "type mismatch");
-        let var = self.var_id_gen.gen(value1.get_type());
-        self.state.push(Op::Var(var.clone()));
-        let statement = Statement {
-            assign: Some(var),
-            expression: Expr::Add(value1.get_type(), value1, value2),
+        let result = self.var_id_gen.gen(result_type.clone());
+        self.state.push(Op::Var(result.clone()));
+        let binary_expr = BinaryExpr {
+            operation,
+            result_type,
+            operand_left: value1,
+            operand_right: value2,
         };
-        self.stmts.push(statement);
-    }
-
-    fn sub(&mut self) {
-        let value2 = self.state.pop();
-        let value1 = self.state.pop();
-        assert_eq!(value1.get_type(), value2.get_type(), "type mismatch");
-        let var = self.var_id_gen.gen(value1.get_type());
-        self.state.push(Op::Var(var.clone()));
         let statement = Statement {
-            assign: Some(var),
-            expression: Expr::Sub(value1.get_type(), value1, value2),
+            assign: Some(result),
+            expression: Expr::Binary(binary_expr),
         };
         self.stmts.push(statement);
     }
@@ -324,9 +345,15 @@ impl<'a> TranslateInstr<'a> {
         self.state
             .locals
             .insert(idx as usize, Op::Var(var2.clone()));
+        let binary_expr = BinaryExpr {
+            operation: BinaryOperation::Add,
+            result_type: Type::Int,
+            operand_left: var1,
+            operand_right: Op::Const(Const::Int(int)),
+        };
         let statement = Statement {
             assign: Some(var2),
-            expression: Expr::Add(Type::Int, var1, Op::Const(Const::Int(int))),
+            expression: Expr::Binary(binary_expr),
         };
         self.stmts.push(statement);
     }
@@ -478,6 +505,24 @@ impl<'a> TranslateInstr<'a> {
         self.stmts.push(statement);
     }
 
+    fn convert(&mut self, operation: ConvertOperation) {
+        let value = self.state.pop();
+        let target_type = match operation {
+            ConvertOperation::IntToChar => Type::Int,
+        };
+        let result = self.var_id_gen.gen(target_type);
+        self.state.push(Op::Var(result.clone()));
+        let convert_expr = ConvertExpr {
+            operation,
+            operand: value,
+        };
+        let statement = Statement {
+            assign: Some(result),
+            expression: Expr::Convert(convert_expr),
+        };
+        self.stmts.push(statement);
+    }
+
     fn table_switch(self, table: &TableSwitch) -> Fallible<Option<TranslateNext>> {
         let value = self.state.pop();
         let default = BlockId::from_addr_with_offset(self.range.start, table.default);
@@ -524,6 +569,7 @@ fn translate_next(
     stmts: &mut Vec<Statement>,
 ) -> Fallible<Option<TranslateNext>> {
     for InstructionWithRange { range, instr } in instrs {
+        log::trace!("translating instruction {:?}", instr);
         let mut t = TranslateInstr {
             range,
             state,
@@ -549,10 +595,15 @@ fn translate_next(
             Instr::Pop2 => t.pop(2),
             // arithmetic operations
             Instr::LCmp => t.lcmp(),
-            Instr::LAdd => t.add(),
-            Instr::IAdd => t.add(),
-            Instr::ISub => t.sub(),
+            Instr::LAdd => t.binary(Type::Long, BinaryOperation::Add),
+            Instr::IAdd => t.binary(Type::Int, BinaryOperation::Add),
+            Instr::ISub => t.binary(Type::Int, BinaryOperation::Sub),
+            Instr::IAnd => t.binary(Type::Int, BinaryOperation::BitwiseAnd),
+            Instr::IOr => t.binary(Type::Int, BinaryOperation::BitwiseOr),
+            Instr::IShL => t.binary(Type::Int, BinaryOperation::ShiftLeft),
             Instr::IInc(idx, int) => t.iinc(*idx, *int as i32),
+            // conversion operations
+            Instr::I2C => t.convert(ConvertOperation::IntToChar),
             // object operations
             Instr::New(idx) => t.new(*idx),
             // field operations
@@ -563,9 +614,11 @@ fn translate_next(
             Instr::ANewArray(_) => t.array_new(Type::Reference),
             Instr::NewArray(atype) => t.array_new(Type::from_array_type(atype)),
             Instr::ArrayLength => t.array_length(),
-            Instr::IaLoad => t.array_load(Type::Int),
             Instr::AaLoad => t.array_load(Type::Reference),
+            Instr::BaLoad => t.array_load(Type::Byte),
+            Instr::IaLoad => t.array_load(Type::Int),
             Instr::AaStore => t.array_store(Type::Reference),
+            Instr::CaStore => t.array_store(Type::Char),
             // contant load operations
             Instr::LdC(idx) => t.load_const(*idx as u16),
             Instr::LdCW(idx) => t.load_const(*idx),
@@ -579,6 +632,7 @@ fn translate_next(
             Instr::LConst1 => t.push_const(Const::Long(1)),
             Instr::AConstNull => t.push_const(Const::Null),
             Instr::BiPush(b) => t.push_const(Const::Int(*b as i32)),
+            Instr::SiPush(s) => t.push_const(Const::Int(*s as i32)),
             // invoke operations
             Instr::InvokeSpecial(idx) => t.invoke(InvokeType::Special, *idx),
             Instr::InvokeStatic(idx) => t.invoke(InvokeType::Static, *idx),
@@ -592,6 +646,7 @@ fn translate_next(
             Instr::IfLt(offset) => return t.if_zcmp(*offset, IComparator::Lt),
             Instr::IfLe(offset) => return t.if_zcmp(*offset, IComparator::Le),
             Instr::IfEq(offset) => return t.if_zcmp(*offset, IComparator::Eq),
+            Instr::IfNe(offset) => return t.if_zcmp(*offset, IComparator::Ne),
             Instr::IfGe(offset) => return t.if_zcmp(*offset, IComparator::Ge),
             Instr::IfGt(offset) => return t.if_zcmp(*offset, IComparator::Gt),
             Instr::IfICmpLe(offset) => return t.if_icmp(*offset, IComparator::Le),
