@@ -24,7 +24,7 @@ value info:
 
 */
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct MethodDispatchKey {
     pub method_name: StrBuf,
     pub method_descriptor: MethodDescriptor,
@@ -34,6 +34,12 @@ impl Hash for MethodDispatchKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(self.method_name.as_bytes());
         self.method_descriptor.hash(state);
+    }
+}
+
+impl PartialEq for MethodDispatchKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.method_name == other.method_name && self.method_descriptor == other.method_descriptor
     }
 }
 

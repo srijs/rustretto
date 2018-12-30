@@ -11,7 +11,6 @@ use crate::loader::{ArrayClass, Class, ClassLoader};
 #[derive(Debug)]
 enum Relation {
     Extends,
-    Implements,
 }
 
 struct Inner {

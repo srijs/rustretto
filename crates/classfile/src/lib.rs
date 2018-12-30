@@ -148,7 +148,7 @@ impl ClassFileParser {
 
     fn parse_magic(&mut self) -> Fallible<()> {
         let magic = self.reader.read_u32::<BigEndian>()?;
-        ensure!(magic == 0xCAFEBABE, "unknown magic byte sequence");
+        ensure!(magic == 0xCAFE_BABE, "unknown magic byte sequence");
         Ok(())
     }
 

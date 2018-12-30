@@ -72,7 +72,7 @@ impl BootstrapClassLoader {
         let mut readers = vec![];
         for path in paths {
             let file = File::open(path)?;
-            let reader = JarReader::new(file)?;
+            let reader = JarReader::try_new(file)?;
             readers.push(reader);
         }
 

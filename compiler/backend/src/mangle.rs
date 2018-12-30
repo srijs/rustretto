@@ -15,7 +15,7 @@ pub fn mangle_method_name(
 
     mangler.nested_start();
 
-    for ns in class_name.split("/") {
+    for ns in class_name.split('/') {
         mangler.name(&ns);
     }
 
@@ -45,7 +45,7 @@ pub fn mangle_method_name(
         }
     }
 
-    return mangler.output;
+    mangler.output
 }
 
 pub fn mangle_field_name(class_name: &str, field_name: &str) -> String {
@@ -53,7 +53,7 @@ pub fn mangle_field_name(class_name: &str, field_name: &str) -> String {
 
     mangler.nested_start();
 
-    for ns in class_name.split("/") {
+    for ns in class_name.split('/') {
         mangler.name(&ns);
     }
 
@@ -61,7 +61,7 @@ pub fn mangle_field_name(class_name: &str, field_name: &str) -> String {
 
     mangler.nested_end();
 
-    return mangler.output;
+    mangler.output
 }
 
 pub fn mangle_class_name(class_name: &str) -> String {
@@ -69,13 +69,13 @@ pub fn mangle_class_name(class_name: &str) -> String {
 
     mangler.nested_start();
 
-    for ns in class_name.split("/") {
+    for ns in class_name.split('/') {
         mangler.name(&ns);
     }
 
     mangler.nested_end();
 
-    return mangler.output;
+    mangler.output
 }
 
 pub fn mangle_vtable_name(class_name: &str) -> String {
@@ -84,12 +84,12 @@ pub fn mangle_vtable_name(class_name: &str) -> String {
     mangler.output.push_str("TV");
 
     mangler.nested_start();
-    for ns in class_name.split("/") {
+    for ns in class_name.split('/') {
         mangler.name(&ns);
     }
     mangler.nested_end();
 
-    return mangler.output;
+    mangler.output
 }
 
 struct Mangler {
@@ -136,7 +136,7 @@ impl Mangler {
                 }
                 FieldType::Object(object_type) => {
                     self.nested_start();
-                    for ns in object_type.class_name.split(".") {
+                    for ns in object_type.class_name.split('.') {
                         self.name(&ns);
                     }
                     self.nested_end();

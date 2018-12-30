@@ -33,23 +33,17 @@ impl Compiler {
         classgen.gen_prelude()?;
 
         for index in cf.constant_pool.indices() {
-            match cf.constant_pool.get_info(index).unwrap() {
-                Constant::Class(class_const) => {
-                    let ext_class_name = cf.constant_pool.get_utf8(class_const.name_index).unwrap();
-                    // don't emit external declarations for own class
-                    if ext_class_name == class_name {
-                        continue;
-                    }
-                    match self.classes.get(ext_class_name)? {
-                        Class::File(ext_class_file) => {
-                            classgen.gen_extern_decls(&ext_class_file)?;
-                            classgen.gen_object_type(ext_class_name)?;
-                            classgen.gen_vtable_type(ext_class_name)?;
-                        }
-                        _ => {}
-                    }
+            if let Constant::Class(class_const) = cf.constant_pool.get_info(index).unwrap() {
+                let ext_class_name = cf.constant_pool.get_utf8(class_const.name_index).unwrap();
+                // don't emit external declarations for own class
+                if ext_class_name == class_name {
+                    continue;
                 }
-                _ => {}
+                if let Class::File(ext_class_file) = self.classes.get(ext_class_name)? {
+                    classgen.gen_extern_decls(&ext_class_file)?;
+                    classgen.gen_object_type(ext_class_name)?;
+                    classgen.gen_vtable_type(ext_class_name)?;
+                }
             }
         }
 
@@ -63,11 +57,8 @@ impl Compiler {
             log::debug!("compiling method {} of class {}", name, class_name);
 
             let mut args = Vec::new();
-            let mut var_id_gen = VarIdGen::new();
-            if &**name == "<init>" {
-                let arg_type = Type::Reference;
-                args.push(var_id_gen.gen(arg_type));
-            } else if !method.is_static() {
+            let mut var_id_gen = VarIdGen::default();
+            if &**name == "<init>" || !method.is_static() {
                 let arg_type = Type::Reference;
                 args.push(var_id_gen.gen(arg_type));
             }

@@ -12,7 +12,6 @@ pub struct InstructionWithRange {
 pub struct InstructionBlock {
     pub range: Range<u32>,
     pub instrs: Vec<InstructionWithRange>,
-    exception_handlers: (), // TODO
 }
 
 impl InstructionBlock {
@@ -28,10 +27,9 @@ impl InstructionBlock {
                 end: self.range.end,
             },
             instrs: tail_instrs,
-            exception_handlers: (),
         };
         self.range.end = addr;
-        return tail_block;
+        tail_block
     }
 
     fn build(disasm: &mut Disassembler, start_addrs: &mut Vec<u32>) -> Fallible<Self> {
@@ -43,7 +41,7 @@ impl InstructionBlock {
             let should_break = match instr {
                 Instr::Return | Instr::IReturn | Instr::AReturn | Instr::AThrow => true,
                 Instr::Goto(offset) => {
-                    let addr = (curr_addr as i64 + offset as i64) as u32;
+                    let addr = (i64::from(curr_addr) + i64::from(offset)) as u32;
                     start_addrs.push(addr);
                     true
                 }
@@ -57,21 +55,23 @@ impl InstructionBlock {
                 | Instr::IfICmpGt(offset)
                 | Instr::IfICmpLe(offset)
                 | Instr::IfACmpNe(offset) => {
-                    let if_addr = (curr_addr as i64 + offset as i64) as u32;
+                    let if_addr = (i64::from(curr_addr) + i64::from(offset)) as u32;
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);
                     true
                 }
                 Instr::TableSwitch(ref table_switch) => {
-                    start_addrs.push((curr_addr as i64 + table_switch.default as i64) as u32);
+                    start_addrs
+                        .push((i64::from(curr_addr) + i64::from(table_switch.default)) as u32);
                     for offset in table_switch.offsets.iter() {
-                        start_addrs.push((curr_addr as i64 + *offset as i64) as u32);
+                        start_addrs.push((i64::from(curr_addr) + i64::from(*offset)) as u32);
                     }
                     true
                 }
                 Instr::LookupSwitch(ref lookup_switch) => {
-                    start_addrs.push((curr_addr as i64 + lookup_switch.default as i64) as u32);
+                    start_addrs
+                        .push((i64::from(curr_addr) + i64::from(lookup_switch.default)) as u32);
                     for (_, offset) in lookup_switch.pairs.iter() {
-                        start_addrs.push((curr_addr as i64 + *offset as i64) as u32);
+                        start_addrs.push((i64::from(curr_addr) + i64::from(*offset)) as u32);
                     }
                     true
                 }
@@ -93,7 +93,6 @@ impl InstructionBlock {
                 return Ok(InstructionBlock {
                     range: block_range,
                     instrs,
-                    exception_handlers: (),
                 });
             }
         }

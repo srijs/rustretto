@@ -12,18 +12,18 @@ impl MethodDescriptor {
     pub(crate) fn parse<R: BufRead>(mut reader: R) -> Fallible<Self> {
         let mut tag = [0u8; 1];
         reader.read_exact(&mut tag)?;
-        ensure!(tag[0] == '(' as u8, "expected parameter descriptors");
+        ensure!(tag[0] == b'(', "expected parameter descriptors");
         let mut params = Vec::new();
         loop {
             reader.read_exact(&mut tag)?;
-            if tag[0] == ')' as u8 {
+            if tag[0] == b')' {
                 break;
             }
             let field_type = FieldType::parse_with_tag(&mut reader, tag[0])?;
             params.push(ParameterDescriptor::Field(field_type));
         }
         reader.read_exact(&mut tag)?;
-        let ret = if tag[0] == 'V' as u8 {
+        let ret = if tag[0] == b'V' {
             ReturnTypeDescriptor::Void
         } else {
             ReturnTypeDescriptor::Field(FieldType::parse_with_tag(reader, tag[0])?)
@@ -69,8 +69,8 @@ impl FieldType {
             'Z' => Ok(FieldType::Base(BaseType::Boolean)),
             'L' => {
                 let mut class_name_bytes = Vec::new();
-                reader.read_until(';' as u8, &mut class_name_bytes)?;
-                if class_name_bytes.pop() != Some(';' as u8) {
+                reader.read_until(b';', &mut class_name_bytes)?;
+                if class_name_bytes.pop() != Some(b';') {
                     bail!("invalid class name");
                 }
                 let class_name = String::from_utf8(class_name_bytes)?.replace('/', ".");

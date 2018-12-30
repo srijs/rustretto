@@ -34,14 +34,14 @@ struct Compile {
     save_temp: Option<PathBuf>,
 }
 
-fn compile(c: Compile) -> Fallible<()> {
+fn compile(c: &Compile) -> Fallible<()> {
     let home = PathBuf::from(
         env::var("JAVA_HOME").map_err(|_| format_err!("could not read JAVA_HOME variable"))?,
     );
 
     let triple = Triple::host();
 
-    let mut driver = Driver::new(home, triple, c.optimize)?;
+    let mut driver = Driver::try_new(home, triple, c.optimize)?;
 
     driver.compile(&c.main, &c.inputs)?;
 
@@ -56,7 +56,7 @@ fn compile(c: Compile) -> Fallible<()> {
 
 fn main() {
     env_logger::init();
-    if let Err(err) = compile(Compile::from_args()) {
+    if let Err(err) = compile(&Compile::from_args()) {
         println!("Error: {}", err);
         println!("{}", err.backtrace());
         std::process::exit(1);

@@ -284,7 +284,7 @@ impl Disassembler {
     }
 
     pub fn set_position(&mut self, pos: u32) {
-        self.code.set_position(pos as u64)
+        self.code.set_position(u64::from(pos))
     }
 
     pub fn decode_next(&mut self) -> Fallible<Option<(u32, Instr)>> {

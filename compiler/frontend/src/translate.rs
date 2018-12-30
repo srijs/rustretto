@@ -25,7 +25,7 @@ impl BlockId {
     }
 
     pub fn from_addr_with_offset(addr: u32, offset: i32) -> Self {
-        BlockId((addr as i64 + offset as i64) as u32)
+        BlockId((i64::from(addr) + i64::from(offset)) as u32)
     }
 }
 
@@ -38,15 +38,12 @@ impl fmt::Display for BlockId {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VarId(pub Type, pub u64);
 
+#[derive(Default)]
 pub struct VarIdGen {
     next_id: u64,
 }
 
 impl VarIdGen {
-    pub fn new() -> Self {
-        VarIdGen { next_id: 0 }
-    }
-
     pub fn gen(&mut self, var_type: Type) -> VarId {
         let var_id = VarId(var_type, self.next_id);
         self.next_id += 1;
@@ -54,7 +51,7 @@ impl VarIdGen {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 enum InvokeType {
     Static,
     Special,
@@ -442,58 +439,59 @@ impl<'a> TranslateInstr<'a> {
 
     fn athrow(self) -> Fallible<Option<TranslateNext>> {
         let var = self.state.pop();
-        return Ok(Some(TranslateNext(BranchStub::Throw(var), None)));
+        Ok(Some(TranslateNext(BranchStub::Throw(var), None)))
     }
 
     fn goto(self, offset: i16) -> Fallible<Option<TranslateNext>> {
-        let addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
-        return Ok(Some(TranslateNext(BranchStub::Goto(addr), None)));
+        let addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
+        Ok(Some(TranslateNext(BranchStub::Goto(addr), None)))
     }
 
     fn ret(self, with_value: bool) -> Fallible<Option<TranslateNext>> {
-        let mut var_opt = None;
-        if with_value {
-            var_opt = Some(self.state.pop());
-        }
-        return Ok(Some(TranslateNext(
+        let var_opt = if with_value {
+            Some(self.state.pop())
+        } else {
+            None
+        };
+        Ok(Some(TranslateNext(
             BranchStub::Return(var_opt),
             Some(ExceptionHandlers),
-        )));
+        )))
     }
 
     fn if_icmp(self, offset: i16, comp: IComparator) -> Fallible<Option<TranslateNext>> {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
-        let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
         let else_addr = BlockId::from_addr(self.range.end);
-        return Ok(Some(TranslateNext(
+        Ok(Some(TranslateNext(
             BranchStub::IfICmp(comp, value1, value2, if_addr, else_addr),
             None,
-        )));
+        )))
     }
 
     fn if_zcmp(self, offset: i16, comp: IComparator) -> Fallible<Option<TranslateNext>> {
         let var = self.state.pop();
-        let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
         let else_addr = BlockId::from_addr(self.range.end);
-        return Ok(Some(TranslateNext(
+        Ok(Some(TranslateNext(
             BranchStub::IfICmp(comp, var, Op::Const(Const::Int(0)), if_addr, else_addr),
             None,
-        )));
+        )))
     }
 
     fn if_acmp(self, offset: i16, comp: AComparator) -> Fallible<Option<TranslateNext>> {
         let value2 = self.state.pop();
         let value1 = self.state.pop();
-        let if_addr = BlockId::from_addr_with_offset(self.range.start, offset as i32);
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
         let else_addr = BlockId::from_addr(self.range.end);
-        return Ok(Some(TranslateNext(
+        Ok(Some(TranslateNext(
             BranchStub::IfACmp(comp, value1, value2, if_addr, else_addr),
             None,
-        )));
+        )))
     }
 
-    fn new(&mut self, idx: u16) {
+    fn object_new(&mut self, idx: u16) {
         let class = self.consts.get_class(ConstantIndex::from_u16(idx)).unwrap();
         let class_name = self.consts.get_utf8(class.name_index).unwrap();
         let var = self.var_id_gen.gen(Type::Reference);
@@ -532,14 +530,14 @@ impl<'a> TranslateInstr<'a> {
             let addr = BlockId::from_addr_with_offset(self.range.start, *offset);
             cases.push((compare_value, addr));
         }
-        return Ok(Some(TranslateNext(
+        Ok(Some(TranslateNext(
             BranchStub::Switch(Switch {
                 value,
                 default,
                 cases,
             }),
             None,
-        )));
+        )))
     }
 
     fn lookup_switch(self, lookup: &LookupSwitch) -> Fallible<Option<TranslateNext>> {
@@ -550,18 +548,18 @@ impl<'a> TranslateInstr<'a> {
             let addr = BlockId::from_addr_with_offset(self.range.start, *offset);
             cases.push((*compare_value, addr));
         }
-        return Ok(Some(TranslateNext(
+        Ok(Some(TranslateNext(
             BranchStub::Switch(Switch {
                 value,
                 default,
                 cases,
             }),
             None,
-        )));
+        )))
     }
 }
 
-fn translate_next(
+fn translate_instructions(
     instrs: &mut Iterator<Item = &InstructionWithRange>,
     state: &mut StackAndLocals,
     consts: &ConstantPool,
@@ -601,11 +599,11 @@ fn translate_next(
             Instr::IAnd => t.binary(Type::Int, BinaryOperation::BitwiseAnd),
             Instr::IOr => t.binary(Type::Int, BinaryOperation::BitwiseOr),
             Instr::IShL => t.binary(Type::Int, BinaryOperation::ShiftLeft),
-            Instr::IInc(idx, int) => t.iinc(*idx, *int as i32),
+            Instr::IInc(idx, int) => t.iinc(*idx, i32::from(*int)),
             // conversion operations
             Instr::I2C => t.convert(ConvertOperation::IntToChar),
             // object operations
-            Instr::New(idx) => t.new(*idx),
+            Instr::New(idx) => t.object_new(*idx),
             // field operations
             Instr::GetStatic(idx) => t.get_static(*idx),
             Instr::GetField(idx) => t.get_field(*idx),
@@ -620,7 +618,7 @@ fn translate_next(
             Instr::AaStore => t.array_store(Type::Reference),
             Instr::CaStore => t.array_store(Type::Char),
             // contant load operations
-            Instr::LdC(idx) => t.load_const(*idx as u16),
+            Instr::LdC(idx) => t.load_const(u16::from(*idx)),
             Instr::LdCW(idx) => t.load_const(*idx),
             Instr::LdC2W(idx) => t.load_const(*idx),
             Instr::IConst0 => t.push_const(Const::Int(0)),
@@ -631,8 +629,8 @@ fn translate_next(
             Instr::LConst0 => t.push_const(Const::Long(0)),
             Instr::LConst1 => t.push_const(Const::Long(1)),
             Instr::AConstNull => t.push_const(Const::Null),
-            Instr::BiPush(b) => t.push_const(Const::Int(*b as i32)),
-            Instr::SiPush(s) => t.push_const(Const::Int(*s as i32)),
+            Instr::BiPush(b) => t.push_const(Const::Int(i32::from(*b))),
+            Instr::SiPush(s) => t.push_const(Const::Int(i32::from(*s))),
             // invoke operations
             Instr::InvokeSpecial(idx) => t.invoke(InvokeType::Special, *idx),
             Instr::InvokeStatic(idx) => t.invoke(InvokeType::Static, *idx),
@@ -673,35 +671,31 @@ fn translate_block(
     let mut state = incoming.clone();
     let mut statements = Vec::new();
     let mut instrs = instr_block.instrs.iter();
-    loop {
-        match translate_next(
-            &mut instrs,
-            &mut state,
-            &consts,
-            var_id_gen,
-            &mut statements,
-        )? {
-            Some(TranslateNext(branch_stub, exceptions)) => {
-                return Ok(BasicBlock {
-                    address,
-                    incoming,
-                    statements,
-                    branch_stub,
-                    exceptions,
-                    outgoing: state,
-                });
-            }
-            None => {
-                let branch_stub = BranchStub::Goto(BlockId(instr_block.range.end));
-                return Ok(BasicBlock {
-                    address,
-                    incoming,
-                    statements,
-                    branch_stub,
-                    exceptions: Some(ExceptionHandlers),
-                    outgoing: state,
-                });
-            }
+    match translate_instructions(
+        &mut instrs,
+        &mut state,
+        &consts,
+        var_id_gen,
+        &mut statements,
+    )? {
+        Some(TranslateNext(branch_stub, exceptions)) => Ok(BasicBlock {
+            address,
+            incoming,
+            statements,
+            branch_stub,
+            exceptions,
+            outgoing: state,
+        }),
+        None => {
+            let branch_stub = BranchStub::Goto(BlockId(instr_block.range.end));
+            Ok(BasicBlock {
+                address,
+                incoming,
+                statements,
+                branch_stub,
+                exceptions: Some(ExceptionHandlers),
+                outgoing: state,
+            })
         }
     }
 }

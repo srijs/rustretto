@@ -6,6 +6,7 @@ use petgraph::Direction;
 
 use crate::translate::{BasicBlock, BlockId, BranchStub, Op, VarId};
 
+#[derive(Default)]
 pub struct BlockGraph {
     inner: StableGraph<BasicBlock, ()>,
     addr_map: BTreeMap<BlockId, NodeIndex>,
@@ -38,7 +39,7 @@ impl PhiMap {
                 let entry = self
                     .inner
                     .entry(left_var.clone())
-                    .or_insert(Some(Vec::new()));
+                    .or_insert_with(|| Some(Vec::new()));
 
                 if let Some(ref mut bindings) = entry {
                     bindings.push((right_op.clone(), addr));
@@ -56,10 +57,7 @@ impl PhiMap {
 
 impl BlockGraph {
     pub fn new() -> Self {
-        BlockGraph {
-            inner: StableGraph::new(),
-            addr_map: BTreeMap::new(),
-        }
+        BlockGraph::default()
     }
 
     pub fn contains(&self, addr: BlockId) -> bool {

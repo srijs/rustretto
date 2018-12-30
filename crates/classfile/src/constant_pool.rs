@@ -120,14 +120,14 @@ impl ConstantIndex {
     }
 
     pub fn from_u8(idx: u8) -> Self {
-        ConstantIndex(idx as u16)
+        ConstantIndex(u16::from(idx))
     }
 
     pub fn from_u16(idx: u16) -> Self {
         ConstantIndex(idx)
     }
 
-    pub fn as_u16(&self) -> u16 {
+    pub fn into_u16(self) -> u16 {
         self.0
     }
 }

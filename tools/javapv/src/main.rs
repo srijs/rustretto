@@ -43,26 +43,26 @@ fn format_constant(idx: u16, pool: &classfile::ConstantPool) -> String {
 
 fn format_instr(ipos: u32, instr: &Instr, pool: &classfile::ConstantPool) -> String {
     match instr {
-        Instr::ALoad0 => format!("aload_0"),
+        Instr::ALoad0 => "aload_0".to_string(),
         Instr::InvokeSpecial(n) => {
             format!("invokespecial #{:<19}// {}", n, format_constant(*n, pool))
         }
-        Instr::Return => format!("return"),
-        Instr::IConst0 => format!("iconst_0"),
+        Instr::Return => "return".to_string(),
+        Instr::IConst0 => "iconst_0".to_string(),
         Instr::InvokeStatic(n) => {
             format!("invokestatic  #{:<19}// {}", n, format_constant(*n, pool))
         }
-        Instr::AStore1 => format!("astore_1"),
-        Instr::ALoad1 => format!("aload_1"),
+        Instr::AStore1 => "astore_1".to_string(),
+        Instr::ALoad1 => "aload_1".to_string(),
         Instr::InvokeVirtual(n) => {
             format!("invokevirtual #{:<19}// {}", n, format_constant(*n, pool))
         }
-        Instr::IfEq(off) => format!("ifeq          {}", ipos as i64 + *off as i64),
+        Instr::IfEq(off) => format!("ifeq          {}", i64::from(ipos) + i64::from(*off)),
         Instr::GetStatic(n) => format!("getstatic     #{:<19}// {}", n, format_constant(*n, pool)),
         Instr::LdC(n) => format!(
             "ldc           #{:<19}// {}",
             n,
-            format_constant(*n as u16, pool)
+            format_constant(u16::from(*n), pool)
         ),
         _ => format!("{:?}", instr),
     }
@@ -72,7 +72,7 @@ fn format_field_type(field_type: &classfile::descriptors::FieldType, out: &mut S
     use classfile::descriptors::*;
 
     match field_type {
-        &FieldType::Base(ref base_type) => match base_type {
+        FieldType::Base(ref base_type) => match base_type {
             BaseType::Byte => out.push_str("byte"),
             BaseType::Char => out.push_str("char"),
             BaseType::Double => out.push_str("double"),
@@ -82,11 +82,11 @@ fn format_field_type(field_type: &classfile::descriptors::FieldType, out: &mut S
             BaseType::Short => out.push_str("short"),
             BaseType::Boolean => out.push_str("boolean"),
         },
-        &FieldType::Array(ArrayType { ref component_type }) => {
+        FieldType::Array(ArrayType { ref component_type }) => {
             format_field_type(component_type, out);
             out.push_str("[]");
         }
-        &FieldType::Object(ObjectType { ref class_name }) => {
+        FieldType::Object(ObjectType { ref class_name }) => {
             out.push_str(class_name);
         }
     }
@@ -171,7 +171,7 @@ macro_rules! try_next {
     }};
 }
 
-fn analyze(opt: Opt) -> Fallible<()> {
+fn analyze(opt: &Opt) -> Fallible<()> {
     let metadata = opt.input.metadata()?;
     let file = fs::File::open(&opt.input)?;
     let cf = ClassFile::parse(file)?;
@@ -204,8 +204,8 @@ fn analyze(opt: Opt) -> Fallible<()> {
     for idx in cf.constant_pool.indices() {
         println!(
             "{:>5} = {}",
-            format!("#{}", idx.as_u16()),
-            format_constant(idx.as_u16(), &cf.constant_pool)
+            format!("#{}", idx.into_u16()),
+            format_constant(idx.into_u16(), &cf.constant_pool)
         )
     }
 
@@ -213,7 +213,7 @@ fn analyze(opt: Opt) -> Fallible<()> {
 
     for (i, method) in cf.methods.iter().enumerate() {
         if i > 0 {
-            println!("");
+            println!();
         }
 
         let mut formatted_method = String::new();
@@ -268,5 +268,5 @@ fn analyze(opt: Opt) -> Fallible<()> {
 fn main() {
     let opt = Opt::from_args();
 
-    analyze(opt).unwrap()
+    analyze(&opt).unwrap()
 }

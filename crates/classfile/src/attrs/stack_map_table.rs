@@ -18,6 +18,10 @@ impl StackMapTable {
         self.count
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
     pub fn entries(&self) -> Entries {
         Entries {
             count: self.count,

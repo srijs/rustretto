@@ -36,7 +36,7 @@ pub struct CodeGen {
 }
 
 impl CodeGen {
-    pub fn new(classes: ClassGraph, target: Target) -> Fallible<Self> {
+    pub fn try_new(classes: ClassGraph, target: Target) -> Fallible<Self> {
         let vtables = VTableMap::new(classes.clone());
         let field_layouts = FieldLayoutMap::new(classes.clone());
         Ok(CodeGen {
@@ -136,14 +136,14 @@ impl ClassCodeGen {
     pub fn gen_object_type(&mut self, class_name: &StrBuf) -> Fallible<()> {
         match self.classes.get(class_name)? {
             Class::File(_) => self.gen_object_struct_type(class_name),
-            Class::Array(array_class) => self.gen_object_array_type(class_name, array_class),
+            Class::Array(array_class) => self.gen_object_array_type(class_name, &array_class),
         }
     }
 
     fn gen_object_array_type(
         &mut self,
         class_name: &StrBuf,
-        array_class: ArrayClass,
+        array_class: &ArrayClass,
     ) -> Fallible<()> {
         writeln!(
             self.out,
@@ -154,7 +154,7 @@ impl ClassCodeGen {
         writeln!(
             self.out,
             "  [0 x {}] ; members",
-            tlt_array_class_component_type(&array_class)
+            tlt_array_class_component_type(array_class)
         )?;
         writeln!(self.out, "}}")?;
         Ok(())
@@ -206,7 +206,7 @@ impl ClassCodeGen {
             if idx < vtable.len() - 1 {
                 writeln!(self.out, ",")?;
             } else {
-                writeln!(self.out, "")?;
+                writeln!(self.out)?;
             }
         }
         writeln!(self.out, "}}")?;
@@ -316,7 +316,7 @@ impl ClassCodeGen {
             self.target.data_layout
         )?;
         writeln!(self.out, "target triple = \"{}\"", self.target.triple)?;
-        writeln!(self.out, "")?;
+        writeln!(self.out)?;
 
         writeln!(self.out, "%ref = type {{ i8*, i8* }}")?;
 
@@ -325,23 +325,22 @@ impl ClassCodeGen {
         writeln!(self.out, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
 
         for index in self.class.constant_pool.indices() {
-            match self.class.constant_pool.get_info(index).unwrap() {
-                Constant::String(string_const) => {
-                    let utf8_index = string_const.string_index;
-                    write!(self.out, "\n")?;
-                    let utf8 = self.class.constant_pool.get_utf8(utf8_index).unwrap();
-                    write!(
-                        self.out,
-                        "@.str{} = internal constant [{} x i8] [",
-                        utf8_index.as_u16(),
-                        utf8.len() + 1
-                    )?;
-                    for byte in utf8.as_bytes() {
-                        write!(self.out, " i8 {},", byte)?;
-                    }
-                    writeln!(self.out, " i8 0 ]")?;
+            if let Constant::String(string_const) =
+                self.class.constant_pool.get_info(index).unwrap()
+            {
+                let utf8_index = string_const.string_index;
+                writeln!(self.out)?;
+                let utf8 = self.class.constant_pool.get_utf8(utf8_index).unwrap();
+                write!(
+                    self.out,
+                    "@.str{} = internal constant [{} x i8] [",
+                    utf8_index.into_u16(),
+                    utf8.len() + 1
+                )?;
+                for byte in utf8.as_bytes() {
+                    write!(self.out, " i8 {},", byte)?;
                 }
-                _ => {}
+                writeln!(self.out, " i8 0 ]")?;
             }
         }
         Ok(())
@@ -598,7 +597,7 @@ impl ClassCodeGen {
                 len,
                 len + 1,
                 len + 1,
-                index.as_u16()
+                index.into_u16()
             )?;
         }
         Ok(())
@@ -1091,7 +1090,7 @@ impl ClassCodeGen {
                 }
                 write!(self.out, "[ {}, %B{} ]", OpVal(out_var), addr)?;
             }
-            writeln!(self.out, "")?;
+            writeln!(self.out)?;
         }
         Ok(())
     }

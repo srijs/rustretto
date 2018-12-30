@@ -19,7 +19,7 @@ pub struct JarReader<R: Read + Seek> {
 }
 
 impl<R: Read + Seek> JarReader<R> {
-    pub fn new(reader: R) -> Fallible<Self> {
+    pub fn try_new(reader: R) -> Fallible<Self> {
         let mut archive = ZipArchive::new(BufReader::new(reader))?;
 
         let manifest = match archive.by_name("META-INF/MANIFEST.MF") {
@@ -46,7 +46,7 @@ impl<R: Read + Seek> JarReader<R> {
 impl JarReader<fs::File> {
     pub fn open<P: AsRef<Path>>(path: P) -> Fallible<Self> {
         let file = fs::File::open(path)?;
-        JarReader::new(file)
+        JarReader::try_new(file)
     }
 }
 

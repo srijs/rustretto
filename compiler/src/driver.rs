@@ -26,7 +26,7 @@ pub struct Driver {
 }
 
 impl Driver {
-    pub fn new(home: PathBuf, target_triple: Triple, optimize: bool) -> Fallible<Self> {
+    pub fn try_new(home: PathBuf, target_triple: Triple, optimize: bool) -> Fallible<Self> {
         let loader = BootstrapClassLoader::open(home)?;
         let modules = HashMap::new();
 
@@ -64,7 +64,7 @@ impl Driver {
             triple: self.machine.triple().to_string(),
             data_layout: self.machine.data_layout().to_string_rep().to_string(),
         };
-        let codegen = CodeGen::new(classes.clone(), target)?;
+        let codegen = CodeGen::try_new(classes.clone(), target)?;
         let mut compiler = Compiler::new(classes.clone(), codegen);
 
         for class_name in class_names {
@@ -120,17 +120,14 @@ impl Driver {
         cmd.arg(output_path);
         cmd.args(&["-lpthread", "-ldl"]);
 
-        match self.target_triple.operating_system {
-            OperatingSystem::Darwin => {
-                let triple = self.machine.triple();
-                let (major, minor, micro) = triple.get_macosx_version();
-                cmd.arg(format!(
-                    "-mmacosx-version-min={}.{}.{}",
-                    major, minor, micro
-                ));
-            }
-            _ => {}
-        };
+        if self.target_triple.operating_system == OperatingSystem::Darwin {
+            let triple = self.machine.triple();
+            let (major, minor, micro) = triple.get_macosx_version();
+            cmd.arg(format!(
+                "-mmacosx-version-min={}.{}.{}",
+                major, minor, micro
+            ));
+        }
 
         let exit = cmd.status()?;
 

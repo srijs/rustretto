@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn new_long_and_double_occupy_wide_slots() {
-        let mut gen = VarIdGen::new();
+        let mut gen = VarIdGen::default();
         let args = vec![
             gen.gen(Type::Long),
             gen.gen(Type::Int),

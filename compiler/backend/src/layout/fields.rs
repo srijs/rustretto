@@ -10,7 +10,7 @@ use strbuf::StrBuf;
 use frontend::classes::ClassGraph;
 use frontend::loader::Class;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct FieldAccessKey {
     pub field_name: StrBuf,
     pub field_type: FieldType,
@@ -20,6 +20,12 @@ impl Hash for FieldAccessKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(self.field_name.as_bytes());
         self.field_type.hash(state);
+    }
+}
+
+impl PartialEq for FieldAccessKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.field_name == other.field_name && self.field_type == other.field_type
     }
 }
 
