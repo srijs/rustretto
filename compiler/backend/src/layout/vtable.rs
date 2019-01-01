@@ -82,6 +82,10 @@ impl VTable {
         self.table.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.table.is_empty()
+    }
+
     pub fn get(
         &self,
         method_name: &str,

@@ -118,6 +118,11 @@ impl ClassCodeGen {
             "%{} = type {{",
             mangle::mangle_vtable_name(class_name)
         )?;
+        write!(self.out, "  i32")?;
+        if !vtable.is_empty() {
+            write!(self.out, ",")?;
+        }
+        writeln!(self.out, " ; <number of table entries>")?;
         for (idx, (key, _)) in vtable.iter().enumerate() {
             let ftyp = tlt_function_type(&key.method_descriptor);
             write!(self.out, "  {} *", ftyp)?;
@@ -191,6 +196,10 @@ impl ClassCodeGen {
             "@{vtable} = constant %{vtable} {{",
             vtable = vtable_name
         )?;
+        write!(self.out, "  i32 {}", vtable.len())?;
+        if !vtable.is_empty() {
+            writeln!(self.out, ",")?;
+        }
         for (idx, (key, target)) in vtable.iter().enumerate() {
             write!(
                 self.out,
@@ -640,7 +649,7 @@ impl ClassCodeGen {
                 writeln!(
                     self.out,
                     "  %t{fptrptr} = getelementptr %{vtblnm}, %{vtblnm}* %t{vtbl}, i64 0, i32 {offset}",
-                    offset = offset,
+                    offset = offset + 1,
                     vtblnm = vtable_name,
                     vtbl = tmp_vtbl,
                     fptrptr = tmp_fptrptr
