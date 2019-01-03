@@ -1,7 +1,4 @@
-let
-  moz_overlay = import (builtins.fetchTarball https://github.com/mozilla/nixpkgs-mozilla/archive/master.tar.gz);
-in
-  with import <nixpkgs> { overlays = [ moz_overlay ]; };
+with import <nixpkgs> {};
 
 stdenv.mkDerivation rec {
   name = "env";
@@ -14,8 +11,7 @@ stdenv.mkDerivation rec {
     else [ ];
 
   buildInputs = platformBuildInputs ++ [
-    latest.rustChannels.stable.rust
-
+    cargo
     llvm_7
     openjdk8
   ];
