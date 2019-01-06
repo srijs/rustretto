@@ -30,8 +30,6 @@ impl Compiler {
 
         let mut classgen = self.codegen.generate_class(class_name)?;
 
-        classgen.gen_prelude()?;
-
         for index in cf.constant_pool.indices() {
             if let Constant::Class(class_const) = cf.constant_pool.get_info(index).unwrap() {
                 let ext_class_name = cf.constant_pool.get_utf8(class_const.name_index).unwrap();
@@ -41,14 +39,10 @@ impl Compiler {
                 }
                 if let Class::File(ext_class_file) = self.classes.get(ext_class_name)? {
                     classgen.gen_extern_decls(&ext_class_file)?;
-                    classgen.gen_object_type(ext_class_name)?;
-                    classgen.gen_vtable_type(ext_class_name)?;
                 }
             }
         }
 
-        classgen.gen_object_type(class_name)?;
-        classgen.gen_vtable_type(class_name)?;
         classgen.gen_vtable_decls(class_name)?;
         classgen.gen_vtable_const(class_name)?;
 
@@ -90,6 +84,6 @@ impl Compiler {
             classgen.gen_main()?;
         }
 
-        Ok(classgen.finish())
+        Ok(classgen.finish()?)
     }
 }
