@@ -7,8 +7,9 @@ edition = "2018"
 [dependencies]
 bytes = "0.4.10"
 failure = "0.1.2"
+fnv = "1.0.6"
 indexmap = "1.0.2"
-zip = { git = "https://github.com/srijs/zip-rs.git", rev = "5d5491d" }
+zip = { git = "https://github.com/srijs/zip-rs.git", rev = "6ca4bd4" }
 
 [dependencies.strbuf]
 path = "../strbuf"

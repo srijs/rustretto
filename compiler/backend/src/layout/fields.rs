@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
 use classfile::FieldType;
 use failure::{bail, Fallible};
+use fnv::{FnvBuildHasher, FnvHashMap};
 use indexmap::{Equivalent, IndexMap};
 use strbuf::StrBuf;
 
@@ -49,7 +49,7 @@ impl<'a> Equivalent<FieldAccessKey> for LookupKey<'a> {
 
 #[derive(Clone, Debug)]
 pub struct FieldLayout {
-    table: Arc<IndexMap<FieldAccessKey, ()>>,
+    table: Arc<IndexMap<FieldAccessKey, (), FnvBuildHasher>>,
 }
 
 impl FieldLayout {
@@ -77,21 +77,21 @@ impl FieldLayout {
 #[derive(Clone)]
 pub struct FieldLayoutMap {
     classes: ClassGraph,
-    inner: Arc<Mutex<HashMap<StrBuf, FieldLayout>>>,
+    inner: Arc<Mutex<FnvHashMap<StrBuf, FieldLayout>>>,
 }
 
 impl FieldLayoutMap {
     pub fn new(classes: ClassGraph) -> Self {
         FieldLayoutMap {
             classes,
-            inner: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(Mutex::new(FnvHashMap::default())),
         }
     }
 
     pub fn get(&self, name: &StrBuf) -> Fallible<FieldLayout> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.contains_key(name) {
-            let mut table = IndexMap::new();
+            let mut table = IndexMap::default();
             self.build_table(name, &mut table)?;
             let layout = FieldLayout {
                 table: Arc::new(table),
@@ -101,7 +101,11 @@ impl FieldLayoutMap {
         Ok(inner[name].clone())
     }
 
-    fn build_table(&self, name: &StrBuf, table: &mut IndexMap<FieldAccessKey, ()>) -> Fallible<()> {
+    fn build_table(
+        &self,
+        name: &StrBuf,
+        table: &mut IndexMap<FieldAccessKey, (), FnvBuildHasher>,
+    ) -> Fallible<()> {
         let classfile = match self.classes.get(name)? {
             Class::File(classfile) => classfile,
             Class::Array(_) => bail!("can't build vtable for array"),

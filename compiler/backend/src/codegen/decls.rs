@@ -2,6 +2,7 @@ use std::fmt::{self, Write};
 use std::sync::Arc;
 
 use failure::Fallible;
+use fnv::FnvBuildHasher;
 use indexmap::IndexMap;
 use strbuf::StrBuf;
 
@@ -44,7 +45,7 @@ pub struct DeclDatabase {
     classes: ClassGraph,
     vtables: VTableMap,
     field_layouts: FieldLayoutMap,
-    decls: IndexMap<DeclKey, DeclEntry>,
+    decls: IndexMap<DeclKey, DeclEntry, FnvBuildHasher>,
 }
 
 impl DeclDatabase {
@@ -53,7 +54,7 @@ impl DeclDatabase {
             classes: classes.clone(),
             vtables: vtables.clone(),
             field_layouts: field_layouts.clone(),
-            decls: IndexMap::new(),
+            decls: IndexMap::default(),
         }
     }
 

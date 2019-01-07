@@ -368,9 +368,10 @@ dependencies = [
  "bytes 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "classfile 0.1.0",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "indexmap 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "strbuf 0.1.0",
- "zip 0.5.0 (git+https://github.com/srijs/zip-rs.git?rev=5d5491d)",
+ "zip 0.5.0 (git+https://github.com/srijs/zip-rs.git?rev=6ca4bd4)",
 ]
 
 [[package]]
@@ -929,7 +930,7 @@ dependencies = [
 [[package]]
 name = "zip"
 version = "0.5.0"
-source = "git+https://github.com/srijs/zip-rs.git?rev=5d5491d#5d5491d0e9d1e7578c83043f058ca2dcc1a6c27f"
+source = "git+https://github.com/srijs/zip-rs.git?rev=6ca4bd4#6ca4bd4ed33b125c760bfdaf0349b34ccc890715"
 dependencies = [
  "bytes 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "bzip2 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1048,4 +1049,4 @@ dependencies = [
 "checksum winapi-x86_64-pc-windows-gnu 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 "checksum wincolor 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "561ed901ae465d6185fa7864d63fbd5720d0ef718366c9a4dc83cf6170d7e9ba"
 "checksum yaml-rust 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "95acf0db5515d07da9965ec0e0ba6cc2d825e2caeb7303b66ca441729801254e"
-"checksum zip 0.5.0 (git+https://github.com/srijs/zip-rs.git?rev=5d5491d)" = "<none>"
+"checksum zip 0.5.0 (git+https://github.com/srijs/zip-rs.git?rev=6ca4bd4)" = "<none>"

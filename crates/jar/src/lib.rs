@@ -7,6 +7,7 @@ use std::path::Path;
 use bytes::Bytes;
 use classfile::ClassFile;
 use failure::Fallible;
+use fnv::FnvBuildHasher;
 use zip::read::ZipArchive;
 
 mod manifest;
@@ -14,13 +15,14 @@ pub use self::manifest::Manifest;
 
 #[derive(Debug)]
 pub struct JarReader<R: Read + Seek> {
-    archive: ZipArchive<BufReader<R>>,
+    archive: ZipArchive<BufReader<R>, FnvBuildHasher>,
     manifest: Option<Manifest>,
 }
 
 impl<R: Read + Seek> JarReader<R> {
     pub fn try_new(reader: R) -> Fallible<Self> {
-        let mut archive = ZipArchive::new(BufReader::new(reader))?;
+        let mut archive =
+            ZipArchive::new_with_hasher(BufReader::new(reader), FnvBuildHasher::default())?;
 
         let manifest = match archive.by_name("META-INF/MANIFEST.MF") {
             Ok(file) => Some(Manifest::parse(file)?),

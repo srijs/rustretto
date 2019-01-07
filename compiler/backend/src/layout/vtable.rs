@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
 use classfile::{MethodAccessFlags, MethodDescriptor};
 use failure::{bail, Fallible};
+use fnv::{FnvBuildHasher, FnvHashMap};
 use indexmap::{Equivalent, IndexMap};
 use strbuf::StrBuf;
 
@@ -70,7 +70,7 @@ pub struct MethodDispatchTarget {
 
 #[derive(Clone, Debug)]
 pub struct VTable {
-    table: Arc<IndexMap<MethodDispatchKey, MethodDispatchTarget>>,
+    table: Arc<IndexMap<MethodDispatchKey, MethodDispatchTarget, FnvBuildHasher>>,
 }
 
 impl VTable {
@@ -106,21 +106,21 @@ impl VTable {
 #[derive(Clone)]
 pub struct VTableMap {
     classes: ClassGraph,
-    inner: Arc<Mutex<HashMap<StrBuf, VTable>>>,
+    inner: Arc<Mutex<FnvHashMap<StrBuf, VTable>>>,
 }
 
 impl VTableMap {
     pub fn new(classes: ClassGraph) -> Self {
         VTableMap {
             classes,
-            inner: Arc::new(Mutex::new(HashMap::new())),
+            inner: Arc::new(Mutex::new(FnvHashMap::default())),
         }
     }
 
     pub fn get(&self, name: &StrBuf) -> Fallible<VTable> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.contains_key(name) {
-            let mut table = IndexMap::new();
+            let mut table = IndexMap::default();
             self.build_table(name, &mut table)?;
             let vtable = VTable {
                 table: Arc::new(table),
@@ -133,7 +133,7 @@ impl VTableMap {
     fn build_table(
         &self,
         name: &StrBuf,
-        table: &mut IndexMap<MethodDispatchKey, MethodDispatchTarget>,
+        table: &mut IndexMap<MethodDispatchKey, MethodDispatchTarget, FnvBuildHasher>,
     ) -> Fallible<()> {
         let classfile = match self.classes.get(name)? {
             Class::File(classfile) => classfile,
