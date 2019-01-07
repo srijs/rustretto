@@ -1,6 +1,7 @@
 use std::fmt::{self, Write};
 use std::sync::Arc;
 
+use classfile::descriptors::{FieldType, MethodDescriptor, ParameterDescriptor};
 use failure::Fallible;
 use fnv::FnvBuildHasher;
 use indexmap::IndexMap;
@@ -8,6 +9,7 @@ use strbuf::StrBuf;
 
 use frontend::classes::ClassGraph;
 use frontend::loader::{ArrayClass, Class};
+use frontend::types::Type;
 
 use crate::codegen::common::*;
 use crate::layout::{FieldLayoutMap, VTableMap};
@@ -15,8 +17,27 @@ use crate::mangle;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum DeclKey {
-    VTableType { class_name: StrBuf },
-    ObjectType { class_name: StrBuf },
+    ObjectType {
+        class_name: StrBuf,
+    },
+    VTableType {
+        class_name: StrBuf,
+    },
+    VTableConst {
+        class_name: StrBuf,
+        vtable_type: DeclIdentifier,
+    },
+    Method {
+        class_name: StrBuf,
+        method_name: StrBuf,
+        method_descriptor: MethodDescriptor,
+        is_static: bool,
+    },
+    StaticField {
+        class_name: StrBuf,
+        field_name: StrBuf,
+        field_type: FieldType,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -26,6 +47,7 @@ struct DeclEntry {
     declaration: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DeclIdentifier {
     global: bool,
     identifier: Arc<String>,
@@ -74,6 +96,55 @@ impl DeclDatabase {
         })
     }
 
+    pub fn add_vtable_const(&mut self, class_name: &StrBuf) -> Fallible<DeclIdentifier> {
+        let vtable_type = self.add_vtable_type(class_name)?;
+        self.add(DeclKey::VTableConst {
+            class_name: class_name.clone(),
+            vtable_type,
+        })
+    }
+
+    pub fn add_instance_method(
+        &mut self,
+        class_name: &StrBuf,
+        method_name: &StrBuf,
+        method_descriptor: &MethodDescriptor,
+    ) -> Fallible<DeclIdentifier> {
+        self.add(DeclKey::Method {
+            class_name: class_name.clone(),
+            method_name: method_name.clone(),
+            method_descriptor: method_descriptor.clone(),
+            is_static: false,
+        })
+    }
+
+    pub fn add_static_method(
+        &mut self,
+        class_name: &StrBuf,
+        method_name: &StrBuf,
+        method_descriptor: &MethodDescriptor,
+    ) -> Fallible<DeclIdentifier> {
+        self.add(DeclKey::Method {
+            class_name: class_name.clone(),
+            method_name: method_name.clone(),
+            method_descriptor: method_descriptor.clone(),
+            is_static: true,
+        })
+    }
+
+    pub fn add_static_field(
+        &mut self,
+        class_name: &StrBuf,
+        field_name: &StrBuf,
+        field_type: &FieldType,
+    ) -> Fallible<DeclIdentifier> {
+        self.add(DeclKey::StaticField {
+            class_name: class_name.clone(),
+            field_name: field_name.clone(),
+            field_type: field_type.clone(),
+        })
+    }
+
     fn add(&mut self, key: DeclKey) -> Fallible<DeclIdentifier> {
         if let Some(entry) = self.decls.get(&key) {
             return Ok(DeclIdentifier {
@@ -88,8 +159,23 @@ impl DeclDatabase {
             field_layouts: &self.field_layouts,
         };
         let identifier = match key {
-            DeclKey::VTableType { ref class_name } => gen.gen_vtable_type(class_name)?,
             DeclKey::ObjectType { ref class_name } => gen.gen_object_type(class_name)?,
+            DeclKey::VTableType { ref class_name } => gen.gen_vtable_type(class_name)?,
+            DeclKey::VTableConst {
+                ref class_name,
+                ref vtable_type,
+            } => gen.gen_vtable_const(class_name, vtable_type)?,
+            DeclKey::Method {
+                ref class_name,
+                ref method_name,
+                ref method_descriptor,
+                is_static,
+            } => gen.gen_method(class_name, method_name, method_descriptor, is_static)?,
+            DeclKey::StaticField {
+                ref class_name,
+                ref field_name,
+                ref field_type,
+            } => gen.gen_field(class_name, field_name, field_type)?,
         };
         self.decls.insert(
             key,
@@ -111,6 +197,85 @@ struct DeclGen<'a> {
 }
 
 impl<'a> DeclGen<'a> {
+    fn gen_field(
+        &mut self,
+        class_name: &StrBuf,
+        field_name: &StrBuf,
+        field_type: &FieldType,
+    ) -> Fallible<DeclIdentifier> {
+        let mangled_name = mangle::mangle_field_name(class_name, field_name);
+        writeln!(
+            self.out,
+            "@{field_name} = external global {field_type}",
+            field_name = mangled_name,
+            field_type = tlt_field_type(field_type)
+        )?;
+        Ok(DeclIdentifier {
+            global: true,
+            identifier: Arc::new(mangled_name),
+        })
+    }
+
+    fn gen_method(
+        &mut self,
+        class_name: &StrBuf,
+        method_name: &StrBuf,
+        method_descriptor: &MethodDescriptor,
+        is_static: bool,
+    ) -> Fallible<DeclIdentifier> {
+        let mangled_name = mangle::mangle_method_name(
+            class_name,
+            method_name,
+            &method_descriptor.ret,
+            &method_descriptor.params,
+        );
+
+        let mut args = vec![];
+        if !is_static {
+            args.push(Type::Reference);
+        }
+        for ParameterDescriptor::Field(field_type) in method_descriptor.params.iter() {
+            args.push(Type::from_field_type(field_type));
+        }
+
+        write!(
+            self.out,
+            "declare {return_type} @{mangled_name}(",
+            return_type = tlt_return_type(&method_descriptor.ret),
+            mangled_name = mangled_name
+        )?;
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                write!(self.out, ", ")?;
+            }
+            write!(self.out, "{}", tlt_type(arg))?;
+        }
+        writeln!(self.out, ")")?;
+
+        Ok(DeclIdentifier {
+            global: true,
+            identifier: Arc::new(mangled_name),
+        })
+    }
+
+    fn gen_vtable_const(
+        &mut self,
+        class_name: &StrBuf,
+        vtable_type: &DeclIdentifier,
+    ) -> Fallible<DeclIdentifier> {
+        let vtable_name = mangle::mangle_vtable_name(class_name);
+        writeln!(
+            self.out,
+            "@{vtbl} = external constant {vtyp}",
+            vtbl = vtable_name,
+            vtyp = vtable_type
+        )?;
+        Ok(DeclIdentifier {
+            global: true,
+            identifier: Arc::new(vtable_name),
+        })
+    }
+
     fn gen_vtable_type(&mut self, class_name: &StrBuf) -> Fallible<DeclIdentifier> {
         let vtable = self.vtables.get(class_name)?;
         let vtable_name = mangle::mangle_vtable_name(class_name);

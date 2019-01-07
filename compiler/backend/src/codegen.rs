@@ -13,7 +13,6 @@ use frontend::blocks::BlockGraph;
 use frontend::classes::ClassGraph;
 use frontend::loader::Class;
 use frontend::translate::VarId;
-use frontend::types::Type;
 
 use crate::layout::{FieldLayoutMap, VTableMap};
 use crate::mangle;
@@ -139,6 +138,14 @@ impl ClassCodeGen {
             writeln!(self.out, ",")?;
         }
         for (idx, (key, target)) in vtable.iter().enumerate() {
+            if target.class_name != *self.class.get_name() {
+                self.decls.add_instance_method(
+                    &target.class_name,
+                    &key.method_name,
+                    &key.method_descriptor,
+                )?;
+            }
+
             write!(
                 self.out,
                 "  {} * @{}",
@@ -157,100 +164,6 @@ impl ClassCodeGen {
             }
         }
         writeln!(self.out, "}}")?;
-
-        Ok(())
-    }
-
-    pub fn gen_vtable_decls(&mut self, class_name: &StrBuf) -> Fallible<()> {
-        let vtable = self.vtables.get(class_name)?;
-
-        for (key, target) in vtable.iter() {
-            if target.class_name == *class_name {
-                continue;
-            }
-            write!(
-                self.out,
-                "declare {return_type} @{mangled_name}(",
-                return_type = tlt_return_type(&key.method_descriptor.ret),
-                mangled_name = mangle::mangle_method_name(
-                    &target.class_name,
-                    &key.method_name,
-                    &key.method_descriptor.ret,
-                    &key.method_descriptor.params
-                )
-            )?;
-            write!(self.out, "%ref")?;
-            for ParameterDescriptor::Field(field) in key.method_descriptor.params.iter() {
-                write!(self.out, ", {}", tlt_field_type(field))?;
-            }
-            writeln!(self.out, ")")?;
-        }
-
-        Ok(())
-    }
-
-    pub fn gen_extern_decls(&mut self, class: &ClassFile) -> Fallible<()> {
-        let class_name = class.get_name();
-        let vtable_name = mangle::mangle_vtable_name(class_name);
-
-        let vtable_type = self.decls.add_vtable_type(class_name)?;
-
-        writeln!(
-            self.out,
-            "@{vtable} = external constant {vtyp}",
-            vtable = vtable_name,
-            vtyp = vtable_type
-        )?;
-
-        for method in class.methods.iter() {
-            let method_name = class.constant_pool.get_utf8(method.name_index).unwrap();
-
-            if &**method_name != "<init>" && !method.is_static() {
-                continue;
-            }
-
-            let mut args = vec![];
-            if !method.is_static() {
-                args.push(Type::Reference);
-            }
-            for ParameterDescriptor::Field(field_type) in method.descriptor.params.iter() {
-                args.push(Type::from_field_type(field_type));
-            }
-
-            write!(
-                self.out,
-                "declare {return_type} @{mangled_name}(",
-                return_type = tlt_return_type(&method.descriptor.ret),
-                mangled_name = mangle::mangle_method_name(
-                    class_name,
-                    method_name,
-                    &method.descriptor.ret,
-                    &method.descriptor.params
-                )
-            )?;
-            for (i, arg) in args.iter().enumerate() {
-                if i > 0 {
-                    write!(self.out, ", ")?;
-                }
-                write!(self.out, "{}", tlt_type(arg))?;
-            }
-            writeln!(self.out, ")")?;
-        }
-
-        for field in class.fields.iter() {
-            let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
-
-            if !field.is_static() {
-                continue;
-            }
-
-            writeln!(
-                self.out,
-                "@{field_name} = external global {field_type}",
-                field_name = mangle::mangle_field_name(class_name, field_name),
-                field_type = tlt_field_type(&field.descriptor)
-            )?;
-        }
 
         Ok(())
     }

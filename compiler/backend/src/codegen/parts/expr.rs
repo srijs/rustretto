@@ -55,6 +55,7 @@ impl<'a> ExprCodeGen<'a> {
     fn gen_expr_new(&mut self, class_name: &StrBuf, dest: Dest) -> Fallible<()> {
         let object_type = self.decls.add_object_type(class_name)?;
         let vtable_type = self.decls.add_vtable_type(class_name)?;
+        let vtable_const = self.decls.add_vtable_const(class_name)?;
 
         if let Dest::Assign(assign) = dest {
             let tmp_size_ptr = self.var_id_gen.gen();
@@ -74,11 +75,11 @@ impl<'a> ExprCodeGen<'a> {
             )?;
             writeln!(
                 self.out,
-                "  {} = call %ref @_Jrt_new(i64 %t{}, i8* bitcast ({vtyp}* @{vtable} to i8*))",
+                "  {} = call %ref @_Jrt_new(i64 %t{}, i8* bitcast ({vtyp}* {vtbl} to i8*))",
                 assign,
                 tmp_size_int,
                 vtyp = vtable_type,
-                vtable = mangle::mangle_vtable_name(class_name)
+                vtbl = vtable_const
             )?;
         }
         Ok(())
@@ -160,15 +161,42 @@ impl<'a> ExprCodeGen<'a> {
 
                 format!("%t{}", tmp_fptr)
             }
-            _ => format!(
-                "@{}",
-                mangle::mangle_method_name(
-                    method_class_name,
-                    method_name,
-                    &method_ref.descriptor.ret,
-                    &method_ref.descriptor.params
+            InvokeTarget::Special(_) => {
+                if method_class_name != self.class.get_name() {
+                    self.decls.add_instance_method(
+                        method_class_name,
+                        method_name,
+                        &method_ref.descriptor,
+                    )?;
+                }
+                format!(
+                    "@{}",
+                    mangle::mangle_method_name(
+                        method_class_name,
+                        method_name,
+                        &method_ref.descriptor.ret,
+                        &method_ref.descriptor.params
+                    )
                 )
-            ),
+            }
+            InvokeTarget::Static => {
+                if method_class_name != self.class.get_name() {
+                    self.decls.add_static_method(
+                        method_class_name,
+                        method_name,
+                        &method_ref.descriptor,
+                    )?;
+                }
+                format!(
+                    "@{}",
+                    mangle::mangle_method_name(
+                        method_class_name,
+                        method_name,
+                        &method_ref.descriptor.ret,
+                        &method_ref.descriptor.params
+                    )
+                )
+            }
         };
 
         if let Dest::Assign(assign) = dest {
@@ -316,10 +344,8 @@ impl<'a> ExprCodeGen<'a> {
             )?;
             writeln!(
                 self.out,
-                "  {} = call %ref @_Jrt_new(i64 %t{}, i8* bitcast (%{vtable}* @{vtable} to i8*))",
-                assign,
-                tmp_total_size_int,
-                vtable = mangle::mangle_vtable_name("java/lang/Object")
+                "  {} = call %ref @_Jrt_new_array(i64 %t{})",
+                assign, tmp_total_size_int
             )?;
             if let DestAssign::Var(assign_op) = assign {
                 let tmp_length_ptr = self.var_id_gen.gen();
@@ -416,13 +442,18 @@ impl<'a> ExprCodeGen<'a> {
         let field_name = consts.get_utf8(field_ref.name_index).unwrap();
         let field_class = consts.get_class(field_ref.class_index).unwrap();
         let field_class_name = consts.get_utf8(field_class.name_index).unwrap();
+
+        let field_identifier =
+            self.decls
+                .add_static_field(field_class_name, field_name, &field_ref.descriptor)?;
+
         if let Dest::Assign(assign) = dest {
             writeln!(
                 self.out,
-                "  {} = load {field_type}, {field_type}* @{field_name}",
+                "  {} = load {ftyp}, {ftyp}* {field}",
                 assign,
-                field_type = tlt_field_type(&field_ref.descriptor),
-                field_name = mangle::mangle_field_name(field_class_name, field_name)
+                ftyp = tlt_field_type(&field_ref.descriptor),
+                field = field_identifier
             )?;
         }
         Ok(())

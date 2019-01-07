@@ -7,6 +7,11 @@ mod io;
 pub mod native;
 pub mod stubs;
 
+extern "C" {
+    #[no_mangle]
+    pub static _ZTVN4java4lang6ObjectE: *const c_void;
+}
+
 #[repr(C)]
 pub struct Ref {
     object: *const c_void,
@@ -33,6 +38,14 @@ pub unsafe extern "C" fn _Jrt_new(size: u64, vtable: *const i8) -> Ref {
     Ref {
         object: libc::malloc(size as usize),
         vtable: vtable as *const c_void,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn _Jrt_new_array(size: u64) -> Ref {
+    Ref {
+        object: libc::malloc(size as usize),
+        vtable: _ZTVN4java4lang6ObjectE,
     }
 }
 

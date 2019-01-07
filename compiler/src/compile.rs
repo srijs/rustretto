@@ -1,5 +1,4 @@
 use classfile::attrs::Code;
-use classfile::constant_pool::Constant;
 use classfile::descriptors::ParameterDescriptor;
 use failure::{bail, Fallible};
 use strbuf::StrBuf;
@@ -30,20 +29,6 @@ impl Compiler {
 
         let mut classgen = self.codegen.generate_class(class_name)?;
 
-        for index in cf.constant_pool.indices() {
-            if let Constant::Class(class_const) = cf.constant_pool.get_info(index).unwrap() {
-                let ext_class_name = cf.constant_pool.get_utf8(class_const.name_index).unwrap();
-                // don't emit external declarations for own class
-                if ext_class_name == class_name {
-                    continue;
-                }
-                if let Class::File(ext_class_file) = self.classes.get(ext_class_name)? {
-                    classgen.gen_extern_decls(&ext_class_file)?;
-                }
-            }
-        }
-
-        classgen.gen_vtable_decls(class_name)?;
         classgen.gen_vtable_const(class_name)?;
 
         for method in cf.methods.iter() {
