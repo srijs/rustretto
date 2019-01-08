@@ -133,6 +133,13 @@ pub struct ConvertExpr {
 }
 
 #[derive(Debug)]
+pub enum CompareExpr {
+    ICmp(IComparator, Op, Op),
+    ACmp(AComparator, Op, Op),
+    LCmp(Op, Op),
+}
+
+#[derive(Debug)]
 pub enum Expr {
     String(ConstantIndex),
     GetStatic(ConstantIndex),
@@ -140,7 +147,7 @@ pub enum Expr {
     PutField(Op, ConstantIndex, Op),
     Invoke(InvokeExpr),
     New(StrBuf),
-    LCmp(Op, Op),
+    Compare(CompareExpr),
     Binary(BinaryExpr),
     ArrayNew(Type, Op),
     ArrayLength(Op),
@@ -175,11 +182,26 @@ pub struct Switch {
     pub cases: Vec<(i32, BlockId)>,
 }
 
+impl Switch {
+    fn goto(addr: BlockId) -> Switch {
+        Switch {
+            value: Op::Const(Const::Int(0)),
+            default: addr,
+            cases: vec![],
+        }
+    }
+
+    fn if_else(var: VarId, if_addr: BlockId, else_addr: BlockId) -> Switch {
+        Switch {
+            value: Op::Var(var),
+            default: else_addr,
+            cases: vec![(1, if_addr)],
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum BranchStub {
-    Goto(BlockId),
-    IfICmp(IComparator, Op, Op, BlockId, BlockId),
-    IfACmp(AComparator, Op, Op, BlockId, BlockId),
     Return(Option<Op>),
     Switch(Switch),
     Throw(Op),
@@ -313,7 +335,7 @@ impl<'a> TranslateInstr<'a> {
         self.state.push(Op::Var(var.clone()));
         let statement = Statement {
             assign: Some(var),
-            expression: Expr::LCmp(value1, value2),
+            expression: Expr::Compare(CompareExpr::LCmp(value1, value2)),
         };
         self.stmts.push(statement);
     }
@@ -444,7 +466,10 @@ impl<'a> TranslateInstr<'a> {
 
     fn goto(self, offset: i16) -> Fallible<Option<TranslateNext>> {
         let addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
-        Ok(Some(TranslateNext(BranchStub::Goto(addr), None)))
+        Ok(Some(TranslateNext(
+            BranchStub::Switch(Switch::goto(addr)),
+            None,
+        )))
     }
 
     fn ret(self, with_value: bool) -> Fallible<Option<TranslateNext>> {
@@ -464,8 +489,14 @@ impl<'a> TranslateInstr<'a> {
         let value1 = self.state.pop();
         let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
         let else_addr = BlockId::from_addr(self.range.end);
+        let tmpvar = self.var_id_gen.gen(Type::Boolean);
+        let statement = Statement {
+            assign: Some(tmpvar.clone()),
+            expression: Expr::Compare(CompareExpr::ICmp(comp, value1, value2)),
+        };
+        self.stmts.push(statement);
         Ok(Some(TranslateNext(
-            BranchStub::IfICmp(comp, value1, value2, if_addr, else_addr),
+            BranchStub::Switch(Switch::if_else(tmpvar, if_addr, else_addr)),
             None,
         )))
     }
@@ -474,8 +505,14 @@ impl<'a> TranslateInstr<'a> {
         let var = self.state.pop();
         let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
         let else_addr = BlockId::from_addr(self.range.end);
+        let tmpvar = self.var_id_gen.gen(Type::Boolean);
+        let statement = Statement {
+            assign: Some(tmpvar.clone()),
+            expression: Expr::Compare(CompareExpr::ICmp(comp, var, Op::Const(Const::Int(0)))),
+        };
+        self.stmts.push(statement);
         Ok(Some(TranslateNext(
-            BranchStub::IfICmp(comp, var, Op::Const(Const::Int(0)), if_addr, else_addr),
+            BranchStub::Switch(Switch::if_else(tmpvar, if_addr, else_addr)),
             None,
         )))
     }
@@ -485,8 +522,14 @@ impl<'a> TranslateInstr<'a> {
         let value1 = self.state.pop();
         let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
         let else_addr = BlockId::from_addr(self.range.end);
+        let tmpvar = self.var_id_gen.gen(Type::Boolean);
+        let statement = Statement {
+            assign: Some(tmpvar.clone()),
+            expression: Expr::Compare(CompareExpr::ACmp(comp, value1, value2)),
+        };
+        self.stmts.push(statement);
         Ok(Some(TranslateNext(
-            BranchStub::IfACmp(comp, value1, value2, if_addr, else_addr),
+            BranchStub::Switch(Switch::if_else(tmpvar, if_addr, else_addr)),
             None,
         )))
     }
@@ -687,7 +730,7 @@ fn translate_block(
             outgoing: state,
         }),
         None => {
-            let branch_stub = BranchStub::Goto(BlockId(instr_block.range.end));
+            let branch_stub = BranchStub::Switch(Switch::goto(BlockId(instr_block.range.end)));
             Ok(BasicBlock {
                 address,
                 incoming,
@@ -714,14 +757,6 @@ pub fn translate_method(
             let instr_block = instr_block_map.block_starting_at(addr.0);
             let block = translate_block(instr_block, state, &consts, var_id_gen)?;
             match block.branch_stub {
-                BranchStub::Goto(addr) => {
-                    remaining.push((addr, block.outgoing.new_with_same_shape(var_id_gen)));
-                }
-                BranchStub::IfICmp(_, _, _, if_addr, else_addr)
-                | BranchStub::IfACmp(_, _, _, if_addr, else_addr) => {
-                    remaining.push((if_addr, block.outgoing.new_with_same_shape(var_id_gen)));
-                    remaining.push((else_addr, block.outgoing.new_with_same_shape(var_id_gen)));
-                }
                 BranchStub::Switch(ref switch) => {
                     remaining.push((
                         switch.default,

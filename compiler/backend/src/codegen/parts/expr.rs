@@ -7,7 +7,8 @@ use strbuf::StrBuf;
 
 use frontend::classes::ClassGraph;
 use frontend::translate::{
-    BinaryExpr, BinaryOperation, ConvertExpr, ConvertOperation, Expr, InvokeExpr, InvokeTarget, Op,
+    AComparator, BinaryExpr, BinaryOperation, CompareExpr, ConvertExpr, ConvertOperation, Expr,
+    IComparator, InvokeExpr, InvokeTarget, Op,
 };
 use frontend::types::Type;
 
@@ -39,7 +40,7 @@ impl<'a> ExprCodeGen<'a> {
             }
             Expr::Invoke(subexpr) => self.gen_expr_invoke(subexpr, consts, dest)?,
             Expr::Binary(binary_expr) => self.gen_expr_binary(binary_expr, dest)?,
-            Expr::LCmp(var1, var2) => self.gen_cmp_long(var1, var2, dest)?,
+            Expr::Compare(compare_expr) => self.gen_expr_compare(compare_expr, dest)?,
             Expr::New(class_name) => self.gen_expr_new(class_name, dest)?,
             Expr::ArrayNew(ctyp, count) => self.gen_expr_array_new(ctyp, count, dest)?,
             Expr::ArrayLength(aref) => self.gen_expr_array_length(aref, dest)?,
@@ -284,6 +285,18 @@ impl<'a> ExprCodeGen<'a> {
             )?;
         }
         Ok(())
+    }
+
+    fn gen_expr_compare(&mut self, expr: &CompareExpr, dest: Dest) -> Fallible<()> {
+        match expr {
+            CompareExpr::ICmp(comp, var1, var2) => {
+                self.gen_expr_compare_int(comp, var1, var2, dest)
+            }
+            CompareExpr::ACmp(comp, var1, var2) => {
+                self.gen_expr_compare_addr(comp, var1, var2, dest)
+            }
+            CompareExpr::LCmp(var1, var2) => self.gen_expr_compare_long(var1, var2, dest),
+        }
     }
 
     fn gen_expr_convert(&mut self, conv_expr: &ConvertExpr, dest: Dest) -> Fallible<()> {
@@ -564,7 +577,74 @@ impl<'a> ExprCodeGen<'a> {
         Ok(field_ref)
     }
 
-    fn gen_cmp_long(&mut self, var1: &Op, var2: &Op, dest: Dest) -> Fallible<()> {
+    fn gen_expr_compare_int(
+        &mut self,
+        comp: &IComparator,
+        var1: &Op,
+        var2: &Op,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let code = match comp {
+                IComparator::Lt => "slt",
+                IComparator::Le => "sle",
+                IComparator::Eq => "eq",
+                IComparator::Ne => "ne",
+                IComparator::Ge => "sge",
+                IComparator::Gt => "sgt",
+            };
+            let tmp_i1 = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = icmp {} i32 {}, {}",
+                tmp_i1,
+                code,
+                OpVal(var1),
+                OpVal(var2)
+            )?;
+            writeln!(self.out, "  {} = zext i1 %t{} to i32", assign, tmp_i1)?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_compare_addr(
+        &mut self,
+        comp: &AComparator,
+        var1: &Op,
+        var2: &Op,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let tmp_ptr1 = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{ptr} = extractvalue %ref {op}, 0",
+                op = OpVal(var1),
+                ptr = tmp_ptr1
+            )?;
+            let tmp_ptr2 = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{ptr} = extractvalue %ref {op}, 0",
+                op = OpVal(var2),
+                ptr = tmp_ptr2
+            )?;
+            let code = match comp {
+                AComparator::Eq => "eq",
+                AComparator::Ne => "ne",
+            };
+            let tmp_i1 = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = icmp {} i8* %t{}, %t{}",
+                tmp_i1, code, tmp_ptr1, tmp_ptr2
+            )?;
+            writeln!(self.out, "  {} = zext i1 %t{} to i32", assign, tmp_i1)?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_compare_long(&mut self, var1: &Op, var2: &Op, dest: Dest) -> Fallible<()> {
         let tmp_lt = self.var_id_gen.gen();
         writeln!(
             self.out,

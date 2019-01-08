@@ -92,14 +92,6 @@ impl BlockGraph {
         let mut new_edges = vec![];
         for (_, index) in self.addr_map.iter() {
             match self.inner[*index].branch_stub {
-                BranchStub::Goto(addr) => {
-                    new_edges.push((*index, self.addr_map[&addr]));
-                }
-                BranchStub::IfICmp(_, _, _, if_addr, else_addr)
-                | BranchStub::IfACmp(_, _, _, if_addr, else_addr) => {
-                    new_edges.push((*index, self.addr_map[&if_addr]));
-                    new_edges.push((*index, self.addr_map[&else_addr]));
-                }
                 BranchStub::Switch(ref switch) => {
                     new_edges.push((*index, self.addr_map[&switch.default]));
                     for (_, addr) in switch.cases.iter() {
