@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "ref.h"
+#include "utils.h"
 
 struct vtable_printstream {
     uint32_t length;
@@ -29,14 +30,14 @@ struct {} _ZTVN4java4lang13StringBuilderE = {};
 struct {} _ZTVN4java4lang24IllegalArgumentExceptionE = {};
 
 void _ZN4java4lang13StringBuilder4initIu9J8cc45093EEvv(ref_t _this) {
-    // unimplemented!
+    trap_unimplemented("java.lang.StringBuilder.<init>");
 }
 
 void _ZN4java4lang24IllegalArgumentException4initIu9Jffb6fc97EEvN4java4lang6StringE(ref_t _this, ref_t _string) {
-    // unimplemented!
+    trap_unimplemented("java.lang.IllegalArgumentException.<init>");
 }
 
 ref_t _ZN4java4lang7Integer11toHexStringIu9Jab2e85aaEEN4java4lang6StringEi(int64_t _value) {
-    // unimplemented!
+    trap_unimplemented("java.lang.Integer.toHexString");
     return REF_NULL;
 }

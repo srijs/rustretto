@@ -9,4 +9,4 @@ typedef struct {
 #define REF_NULL ((ref_t) { .object = NULL, .vtable = NULL })
 #define REF_HASH(ref) ((uint32_t)(intptr_t)ref.object)
 
-#endif // FOO_H_
+#endif // REF_H_

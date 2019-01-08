@@ -1,6 +1,8 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <execinfo.h>
 
 #include "ref.h"
 
@@ -24,8 +26,17 @@ ref_t _Jrt_new_array(uint32_t count, uint64_t component_size) {
     };
 }
 
+static int BACKTRACE_MAX_LEN = 64;
+
 void _Jrt_throw(ref_t _throwable) {
-    abort();
+    void *stack[BACKTRACE_MAX_LEN];
+    int size = backtrace(stack, BACKTRACE_MAX_LEN);
+    char **symbols = backtrace_symbols(stack, size);
+    int i;
+    for (i = 0; i < size; i++) {
+        fprintf(stderr, "%s\n", symbols[i]);
+    }
+    exit(EXIT_FAILURE);
 }
 
 ref_t _Jrt_ldstr(int32_t _len, void *bytes) {
