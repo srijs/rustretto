@@ -1,6 +1,7 @@
 #ifndef ARRAY_H_
 #define ARRAY_H_
 
+#define _GNU_SOURCE 1
 #include <stddef.h>
 #include <stdint.h>
 #include <memory.h>
@@ -21,4 +22,4 @@ static inline ref_t array_new(uint32_t count, uint64_t component_size) {
     return ref;
 }
 
-#endif // STRING_H_
+#endif // ARRAY_H_
