@@ -35,16 +35,19 @@ impl Ref {
 
 #[no_mangle]
 pub unsafe extern "C" fn _Jrt_new(size: u64, vtable: *const i8) -> Ref {
+    let object = libc::calloc(1, size as usize);
     Ref {
-        object: libc::malloc(size as usize),
+        object: object,
         vtable: vtable as *const c_void,
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _Jrt_new_array(size: u64) -> Ref {
+pub unsafe extern "C" fn _Jrt_new_array(count: u32, component_size: u64) -> Ref {
+    let object = libc::calloc(count as usize, component_size as usize);
+    ptr::write(object as *mut u32, count);
     Ref {
-        object: libc::malloc(size as usize),
+        object,
         vtable: _ZTVN4java4lang6ObjectE,
     }
 }

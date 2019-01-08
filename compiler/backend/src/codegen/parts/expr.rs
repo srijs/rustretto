@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 
 use classfile::{ClassFile, ConstantIndex, ConstantPool, FieldRef};
-use failure::{bail, Fallible};
+use failure::Fallible;
 use strbuf::StrBuf;
 
 use frontend::classes::ClassGraph;
@@ -307,61 +307,11 @@ impl<'a> ExprCodeGen<'a> {
     fn gen_expr_array_new(&mut self, ctyp: &Type, count: &Op, dest: Dest) -> Fallible<()> {
         if let Dest::Assign(assign) = dest {
             let component_type = tlt_array_component_type(ctyp);
-
-            let tmp_component_size_ptr = self.var_id_gen.gen();
             writeln!(
                 self.out,
-                "  %t{} = getelementptr {ctyp}, {ctyp}* null, i64 1",
-                tmp_component_size_ptr,
-                ctyp = component_type
+                "  {} = call %ref @_Jrt_new_array(i32 {count}, i64 ptrtoint ({ctyp}* getelementptr ({ctyp}, {ctyp}* null, i64 1) to i64))",
+                assign, count = OpVal(count), ctyp = component_type
             )?;
-            let tmp_component_size_int = self.var_id_gen.gen();
-            writeln!(
-                self.out,
-                "  %t{} = ptrtoint {ctyp}* %t{} to i64",
-                tmp_component_size_int,
-                tmp_component_size_ptr,
-                ctyp = component_type
-            )?;
-            let tmp_count_wide = self.var_id_gen.gen();
-            writeln!(
-                self.out,
-                "  %t{} = zext i32 {} to i64",
-                tmp_count_wide,
-                OpVal(count)
-            )?;
-            let tmp_components_size_int = self.var_id_gen.gen();
-            writeln!(
-                self.out,
-                "  %t{} = mul i64 %t{}, %t{}",
-                tmp_components_size_int, tmp_component_size_int, tmp_count_wide
-            )?;
-            let tmp_total_size_int = self.var_id_gen.gen();
-            writeln!(
-                self.out,
-                "  %t{} = add i64 %t{}, 64",
-                tmp_total_size_int, tmp_components_size_int
-            )?;
-            writeln!(
-                self.out,
-                "  {} = call %ref @_Jrt_new_array(i64 %t{})",
-                assign, tmp_total_size_int
-            )?;
-            if let DestAssign::Var(assign_op) = assign {
-                let tmp_length_ptr = self.var_id_gen.gen();
-                self.gen_get_array_length_ptr(
-                    &Op::Var(assign_op),
-                    Dest::Assign(DestAssign::Tmp(tmp_length_ptr)),
-                )?;
-                writeln!(
-                    self.out,
-                    "store i32 {}, i32* %t{}",
-                    OpVal(count),
-                    tmp_length_ptr
-                )?;
-            } else {
-                bail!("can't assign array to tmp dest");
-            }
         }
         Ok(())
     }
