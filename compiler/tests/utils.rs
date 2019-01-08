@@ -32,7 +32,7 @@ impl TestCase {
         let tmpdir = TempDir::new().unwrap();
         let tmppath = tmpdir.path();
 
-        let runtime_path = cwd.join("../target/release/libruntime.a");
+        let runtime_path = cwd.join("../runtime/libruntime.a");
         let output_path = tmppath.join("Test");
 
         let mut srcfile = File::create(tmppath.join("Test.java")).unwrap();

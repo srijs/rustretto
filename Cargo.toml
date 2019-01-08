@@ -4,8 +4,6 @@ members = [
   "compiler/frontend",
   "compiler/backend",
 
-  "runtime",
-
   "tools/javapv",
 
   "crates/strbuf",

@@ -1,10 +1,13 @@
-.PHONY: runtime compiler
+.PHONY: runtime compiler clean
 
 runtime:
-	RUSTFLAGS="-Cpanic=abort" cargo build --release -p runtime
+	make -C runtime
 
 compiler:
 	cargo build -p compiler
 
 test: runtime
 	cargo test
+
+clean:
+	make -C runtime clean
