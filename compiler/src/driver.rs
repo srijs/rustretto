@@ -3,7 +3,6 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 
 use classfile::ClassFile;
 use failure::{bail, Fallible};
@@ -22,7 +21,7 @@ pub struct Driver {
     target_triple: Triple,
     optimize: bool,
     modules: HashMap<String, String>,
-    machine: Arc<llvm::codegen::TargetMachine>,
+    machine: llvm::codegen::TargetMachine,
 }
 
 impl Driver {
@@ -35,7 +34,7 @@ impl Driver {
         if optimize {
             machine_builder.set_opt_level(llvm::codegen::OptLevel::Aggressive);
         }
-        let machine = Arc::new(machine_builder.build()?);
+        let machine = machine_builder.build()?;
 
         Ok(Driver {
             loader,
