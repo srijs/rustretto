@@ -58,15 +58,19 @@ impl<'a> fmt::Display for OpVal<'a> {
     }
 }
 
-pub fn tlt_function_type(descr: &MethodDescriptor) -> String {
-    let mut output = tlt_return_type(&descr.ret).to_owned();
-    output.push_str(" (%ref");
-    for ParameterDescriptor::Field(field) in descr.params.iter() {
-        output.push_str(", ");
-        output.push_str(tlt_field_type(field));
+pub struct GenFunctionType<'a>(pub &'a MethodDescriptor);
+
+impl<'a> fmt::Display for GenFunctionType<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(tlt_return_type(&self.0.ret))?;
+        f.write_str(" (%ref")?;
+        for ParameterDescriptor::Field(field) in self.0.params.iter() {
+            f.write_str(", ")?;
+            f.write_str(tlt_field_type(field))?;
+        }
+        f.write_str(")")?;
+        Ok(())
     }
-    output.push_str(")");
-    output
 }
 
 pub fn tlt_return_type(return_type: &ReturnTypeDescriptor) -> &'static str {

@@ -155,7 +155,7 @@ impl<'a> ExprCodeGen<'a> {
                     "  %t{fptr} = load {ftyp}*, {ftyp}** %t{fptrptr}",
                     fptr = tmp_fptr,
                     fptrptr = tmp_fptrptr,
-                    ftyp = tlt_function_type(&method_ref.descriptor)
+                    ftyp = GenFunctionType(&method_ref.descriptor)
                 )?;
                 writeln!(self.out, "  ; invoke {}", method_name)?;
 

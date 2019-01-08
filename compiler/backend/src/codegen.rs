@@ -149,7 +149,7 @@ impl ClassCodeGen {
             write!(
                 self.out,
                 "  {} * @{}",
-                tlt_function_type(&key.method_descriptor),
+                GenFunctionType(&key.method_descriptor),
                 mangle::mangle_method_name(
                     &target.class_name,
                     &key.method_name,

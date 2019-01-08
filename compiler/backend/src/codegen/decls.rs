@@ -286,8 +286,7 @@ impl<'a> DeclGen<'a> {
         }
         writeln!(self.out, " ; <number of table entries>")?;
         for (idx, (key, _)) in vtable.iter().enumerate() {
-            let ftyp = tlt_function_type(&key.method_descriptor);
-            write!(self.out, "  {} *", ftyp)?;
+            write!(self.out, "  {} *", GenFunctionType(&key.method_descriptor))?;
             if idx < vtable.len() - 1 {
                 write!(self.out, ",")?;
             } else {
