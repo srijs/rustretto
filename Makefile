@@ -5,3 +5,6 @@ runtime:
 
 compiler:
 	cargo build -p compiler
+
+test: runtime
+	cargo test

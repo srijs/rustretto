@@ -6,4 +6,4 @@ cache:
     - $TRAVIS_BUILD_DIR/target
 
 script:
-  - nix-shell --pure --run "cargo build --release -p runtime && cargo test"
+  - nix-shell --pure --run "make test"
