@@ -35,7 +35,7 @@ impl Ref {
 
 #[no_mangle]
 pub unsafe extern "C" fn _Jrt_new(size: u64, vtable: *const i8) -> Ref {
-    let object = libc::calloc(1, size as usize);
+    let object = libc::malloc(size as usize);
     Ref {
         object: object,
         vtable: vtable as *const c_void,
@@ -44,7 +44,8 @@ pub unsafe extern "C" fn _Jrt_new(size: u64, vtable: *const i8) -> Ref {
 
 #[no_mangle]
 pub unsafe extern "C" fn _Jrt_new_array(count: u32, component_size: u64) -> Ref {
-    let object = libc::calloc(count as usize, component_size as usize);
+    let size = 4 + count as usize * component_size as usize;
+    let object = libc::malloc(size);
     ptr::write(object as *mut u32, count);
     Ref {
         object,
