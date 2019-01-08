@@ -3,7 +3,6 @@ language: nix
 cache:
   directories:
     - $HOME/.cargo
-    - $TRAVIS_BUILD_DIR/target
 
 script:
   - nix-shell --pure --run "make test"
