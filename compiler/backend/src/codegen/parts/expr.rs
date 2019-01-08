@@ -96,9 +96,8 @@ impl<'a> ExprCodeGen<'a> {
         if let Dest::Assign(assign) = dest {
             writeln!(
                 self.out,
-                "  {} = call %ref @_Jrt_ldstr(i32 {}, i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
+                "  {} = call %ref @_Jrt_ldstr(i8* getelementptr ([{} x i8], [{} x i8]* @.str{}, i64 0, i64 0))",
                 assign,
-                len,
                 len + 1,
                 len + 1,
                 index.into_u16()

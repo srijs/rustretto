@@ -47,7 +47,7 @@ impl<'a> PreludeCodeGen<'a> {
         writeln!(self.out, "declare %ref @_Jrt_new(i64, i8*)")?;
         writeln!(self.out, "declare %ref @_Jrt_new_array(i32, i64)")?;
         writeln!(self.out, "declare void @_Jrt_throw(%ref) noreturn")?;
-        writeln!(self.out, "declare %ref @_Jrt_ldstr(i32, i8*)")?;
+        writeln!(self.out, "declare %ref @_Jrt_ldstr(i8*)")?;
 
         for index in self.class.constant_pool.indices() {
             if let Constant::String(string_const) =

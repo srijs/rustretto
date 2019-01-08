@@ -4,7 +4,7 @@
 #define _GNU_SOURCE 1
 #include <pthread.h>
 
-static inline void thread_setname(const char *name) {
+static inline void thread_name_set(const char *name) {
     #ifdef __GLIBC__
         pthread_t self = pthread_self();
         pthread_setname_np(self, name);
@@ -13,7 +13,7 @@ static inline void thread_setname(const char *name) {
     #endif
 }
 
-static inline int thread_getname(char *name, size_t len) {
+static inline int thread_name_get(char *name, size_t len) {
     pthread_t self = pthread_self();
     return pthread_getname_np(self, name, len);
 }
