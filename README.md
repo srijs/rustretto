@@ -26,5 +26,5 @@ $ make compiler
 ### Running
 
 ```
-$ ./target/debug/compiler -r=target/release/libruntime.a -o=Main --main=Main Main.class
+$ ./target/debug/compiler -r=runtime/libruntime.a -o=Main --main=Main Main.class
 ```
