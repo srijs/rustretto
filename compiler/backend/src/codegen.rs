@@ -101,10 +101,10 @@ impl ClassCodeGen {
             .constant_pool
             .get_utf8(self.class.get_this_class().name_index)
             .unwrap();
-        writeln!(self.out, "define i32 @main() {{")?;
+        writeln!(self.out, "define i32 @main(i32 %argc, i8** %argv) {{")?;
         writeln!(
             self.out,
-            "  call void @{}(%ref zeroinitializer)",
+            "  %code = call i32 @_Jrt_start(i32 %argc, i8** %argv, void (%ref) * @{})",
             mangle::mangle_method_name(
                 class_name,
                 "main",
@@ -116,7 +116,7 @@ impl ClassCodeGen {
                 }))]
             )
         )?;
-        writeln!(self.out, "  ret i32 0")?;
+        writeln!(self.out, "  ret i32 %code")?;
         writeln!(self.out, "}}")?;
         Ok(())
     }
