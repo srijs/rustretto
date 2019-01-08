@@ -8,18 +8,19 @@
 
 #### Requirements
 
+- Rust 1.31.0 (or higher)
 - LLVM 7.0
 
 #### Building the runtime support library
 
 ```
-$ RUSTFLAGS="-Cpanic=abort" cargo +nightly build --release -p runtime
+$ make runtime
 ```
 
 #### Building the compiler
 
 ```
-$ cargo build -p compiler
+$ make compiler
 ```
 
 ### Running
