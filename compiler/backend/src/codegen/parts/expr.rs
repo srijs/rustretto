@@ -59,26 +59,11 @@ impl<'a> ExprCodeGen<'a> {
         let vtable_const = self.decls.add_vtable_const(class_name)?;
 
         if let Dest::Assign(assign) = dest {
-            let tmp_size_ptr = self.var_id_gen.gen();
             writeln!(
                 self.out,
-                "  %t{} = getelementptr {otyp}, {otyp}* null, i32 1",
-                tmp_size_ptr,
-                otyp = object_type
-            )?;
-            let tmp_size_int = self.var_id_gen.gen();
-            writeln!(
-                self.out,
-                "  %t{} = ptrtoint {otyp}* %t{} to i64",
-                tmp_size_int,
-                tmp_size_ptr,
-                otyp = object_type
-            )?;
-            writeln!(
-                self.out,
-                "  {} = call %ref @_Jrt_object_new(i64 %t{}, i8* bitcast ({vtyp}* {vtbl} to i8*))",
+                "  {} = call %ref @_Jrt_object_new(i64 {size}, i8* bitcast ({vtyp}* {vtbl} to i8*))",
                 assign,
-                tmp_size_int,
+                size = GenSizeOf(&object_type),
                 vtyp = vtable_type,
                 vtbl = vtable_const
             )?;
@@ -328,8 +313,10 @@ impl<'a> ExprCodeGen<'a> {
             let component_type = tlt_array_component_type(ctyp);
             writeln!(
                 self.out,
-                "  {} = call %ref @_Jrt_array_new(i32 {count}, i64 ptrtoint ({ctyp}* getelementptr ({ctyp}, {ctyp}* null, i64 1) to i64))",
-                assign, count = OpVal(count), ctyp = component_type
+                "  {} = call %ref @_Jrt_array_new(i32 {count}, i64 {width})",
+                assign,
+                count = OpVal(count),
+                width = GenSizeOf(&component_type)
             )?;
         }
         Ok(())

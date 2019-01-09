@@ -58,6 +58,18 @@ impl<'a> fmt::Display for OpVal<'a> {
     }
 }
 
+pub struct GenSizeOf<T: fmt::Display>(pub T);
+
+impl<T: fmt::Display> fmt::Display for GenSizeOf<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "ptrtoint ({ctyp}* getelementptr ({ctyp}, {ctyp}* null, i64 1) to i64)",
+            ctyp = self.0
+        )
+    }
+}
+
 pub struct GenFunctionType<'a>(pub &'a MethodDescriptor);
 
 impl<'a> fmt::Display for GenFunctionType<'a> {
