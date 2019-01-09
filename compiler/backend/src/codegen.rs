@@ -121,10 +121,10 @@ impl ClassCodeGen {
         Ok(())
     }
 
-    pub fn gen_vtable_const(&mut self, class_name: &StrBuf) -> Fallible<()> {
+    pub fn gen_vtable_const(&mut self, class_file: &ClassFile) -> Fallible<()> {
+        let class_name = class_file.get_name();
         let vtable = self.vtables.get(class_name)?;
         let vtable_name = mangle::mangle_vtable_name(class_name);
-
         let vtable_type = self.decls.add_vtable_type(class_name)?;
 
         writeln!(
@@ -133,22 +133,24 @@ impl ClassCodeGen {
             vtable = vtable_name,
             vtyp = vtable_type
         )?;
-        write!(self.out, "  i32 {}", vtable.len())?;
-        if !vtable.is_empty() {
-            writeln!(self.out, ",")?;
+        if !class_file.is_interface() {
+            writeln!(
+                self.out,
+                "  i32 {}, ; <number of methods>",
+                vtable.method_count()
+            )?;
         }
-        for (idx, (key, target)) in vtable.iter().enumerate() {
-            if target.class_name != *self.class.get_name() {
+        for (key, target) in vtable.iter_methods() {
+            if target.class_name != *class_name {
                 self.decls.add_instance_method(
                     &target.class_name,
                     &key.method_name,
                     &key.method_descriptor,
                 )?;
             }
-
-            write!(
+            writeln!(
                 self.out,
-                "  {} * @{}",
+                "  {} * @{},",
                 GenFunctionType(&key.method_descriptor),
                 mangle::mangle_method_name(
                     &target.class_name,
@@ -157,11 +159,28 @@ impl ClassCodeGen {
                     &key.method_descriptor.params
                 )
             )?;
-            if idx < vtable.len() - 1 {
-                writeln!(self.out, ",")?;
+        }
+        write!(self.out, "  i32 {}", vtable.interface_count())?;
+        if vtable.interface_count() > 0 {
+            write!(self.out, ",")?;
+        }
+        writeln!(self.out, " ; <number of interfaces>")?;
+        for (idx, (name, offset)) in vtable.iter_interfaces().enumerate() {
+            let interface_vtable_type = self.decls.add_vtable_type(name)?;
+            let interface_vtable_const = self.decls.add_vtable_const(name)?;
+            writeln!(
+                self.out,
+                "  i8* bitcast ({vtyp}* {vtbl} to i8*),",
+                vtyp = interface_vtable_type,
+                vtbl = interface_vtable_const
+            )?;
+            write!(self.out, "  i32 {}", offset)?;
+            if idx < vtable.interface_count() - 1 {
+                write!(self.out, ",")?;
             } else {
-                writeln!(self.out)?;
+                write!(self.out, "")?;
             }
+            writeln!(self.out, " ; #{} interface {}", idx, name)?;
         }
         writeln!(self.out, "}}")?;
 
@@ -229,6 +248,40 @@ impl ClassCodeGen {
             write!(self.out, "{}", tlt_type(&arg.0))?;
         }
         writeln!(self.out, ")")?;
+        Ok(())
+    }
+
+    pub fn gen_abstract_method(
+        &mut self,
+        method: &Method,
+        args: &[VarId],
+        consts: &ConstantPool,
+    ) -> Fallible<()> {
+        let class_name = consts
+            .get_utf8(self.class.get_this_class().name_index)
+            .unwrap();
+        let method_name = consts.get_utf8(method.name_index).unwrap();
+        write!(
+            self.out,
+            "\ndefine {return_type} @{mangled_name}(",
+            return_type = tlt_return_type(&method.descriptor.ret),
+            mangled_name = mangle::mangle_method_name(
+                class_name,
+                method_name,
+                &method.descriptor.ret,
+                &method.descriptor.params
+            )
+        )?;
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                write!(self.out, ", ")?;
+            }
+            write!(self.out, "{}", tlt_type(&arg.0))?;
+        }
+        writeln!(self.out, ") {{")?;
+        writeln!(self.out, "  call void @_Jrt_abstract() noreturn")?;
+        writeln!(self.out, "  unreachable")?;
+        writeln!(self.out, "}}")?;
         Ok(())
     }
 

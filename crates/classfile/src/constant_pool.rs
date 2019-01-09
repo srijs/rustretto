@@ -85,6 +85,23 @@ impl ConstantPool {
         }
     }
 
+    pub fn get_interface_method_ref(&self, idx: ConstantIndex) -> Option<MethodRef> {
+        if let Some(&Constant::InterfaceMethodRef(ref method_ref_const)) = self.get_info(idx) {
+            let name_and_type = self
+                .get_name_and_type(method_ref_const.name_and_type_index)
+                .unwrap();
+            let descriptor_string = self.get_utf8(name_and_type.descriptor_index).unwrap();
+            let descriptor = MethodDescriptor::parse(descriptor_string.as_bytes()).unwrap();
+            Some(MethodRef {
+                class_index: method_ref_const.class_index,
+                name_index: name_and_type.name_index,
+                descriptor,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn get_field_ref(&self, idx: ConstantIndex) -> Option<FieldRef> {
         if let Some(&Constant::FieldRef(ref method_ref_const)) = self.get_info(idx) {
             let name_and_type = self

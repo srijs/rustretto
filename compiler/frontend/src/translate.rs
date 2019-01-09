@@ -3,7 +3,7 @@ use std::fmt;
 use classfile::constant_pool::Constant;
 use classfile::descriptors::ReturnTypeDescriptor;
 use classfile::instructions::{Disassembler, Instr, LookupSwitch, TableSwitch};
-use classfile::{ConstantIndex, ConstantPool};
+use classfile::{ConstantIndex, ConstantPool, MethodRef};
 use failure::{bail, Fallible};
 use strbuf::StrBuf;
 
@@ -51,11 +51,12 @@ impl VarIdGen {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum InvokeType {
     Static,
     Special,
     Virtual,
+    Interface,
 }
 
 #[derive(Debug)]
@@ -63,12 +64,13 @@ pub enum InvokeTarget {
     Static,
     Special(Op),
     Virtual(Op),
+    Interface(Op),
 }
 
 #[derive(Debug)]
 pub struct InvokeExpr {
     pub target: InvokeTarget,
-    pub index: ConstantIndex,
+    pub method: MethodRef,
     pub args: Vec<Op>,
 }
 
@@ -379,29 +381,38 @@ impl<'a> TranslateInstr<'a> {
 
     fn invoke(&mut self, invoke: InvokeType, idx: u16) {
         let cidx = ConstantIndex::from_u16(idx);
-        let method = self.consts.get_method_ref(cidx).unwrap();
+        let method = if invoke == InvokeType::Interface {
+            self.consts.get_interface_method_ref(cidx).unwrap()
+        } else {
+            self.consts.get_method_ref(cidx).unwrap()
+        };
         let method_args_len = method.descriptor.params.len();
         let args = self.state.pop_n(method_args_len);
+        let return_type = match method.descriptor.ret {
+            ReturnTypeDescriptor::Void => None,
+            ReturnTypeDescriptor::Field(ref field_type) => Some(Type::from_field_type(&field_type)),
+        };
         let expr = match invoke {
             InvokeType::Static => InvokeExpr {
                 target: InvokeTarget::Static,
-                index: cidx,
+                method,
                 args,
             },
             InvokeType::Special => InvokeExpr {
                 target: InvokeTarget::Special(self.state.pop()),
-                index: cidx,
+                method,
                 args,
             },
             InvokeType::Virtual => InvokeExpr {
                 target: InvokeTarget::Virtual(self.state.pop()),
-                index: cidx,
+                method,
                 args,
             },
-        };
-        let return_type = match method.descriptor.ret {
-            ReturnTypeDescriptor::Void => None,
-            ReturnTypeDescriptor::Field(field_type) => Some(Type::from_field_type(&field_type)),
+            InvokeType::Interface => InvokeExpr {
+                target: InvokeTarget::Interface(self.state.pop()),
+                method,
+                args,
+            },
         };
         let return_var = return_type.map(|t| self.var_id_gen.gen(t));
         if let Some(ref var) = return_var {
@@ -678,6 +689,7 @@ fn translate_instructions(
             Instr::InvokeSpecial(idx) => t.invoke(InvokeType::Special, *idx),
             Instr::InvokeStatic(idx) => t.invoke(InvokeType::Static, *idx),
             Instr::InvokeVirtual(idx) => t.invoke(InvokeType::Virtual, *idx),
+            Instr::InvokeInterface(idx, _, _) => t.invoke(InvokeType::Interface, *idx),
             // branch operations
             Instr::Goto(offset) => return t.goto(*offset),
             Instr::Return => return t.ret(false),

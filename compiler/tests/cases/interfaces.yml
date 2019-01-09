@@ -1,0 +1,30 @@
+source: |
+     public class Test {
+          interface X {
+               void x();
+          }
+          interface Y extends X {
+               void y();
+          }
+          public static void main(String[] args) {
+               class A implements X {
+                    public void x() {
+                         System.out.println("Ax");
+                    }
+               }
+               class B extends A implements Y {
+                    public void x() {
+                         System.out.println("Bx");
+                    }
+                    public void y() {
+                         System.out.println("By");
+                    }
+               }
+               X x = new A();
+               Y y = new B();
+               x.x();
+               y.x();
+               y.y();
+          }
+     }
+output: "Ax\nBx\nBy\n"

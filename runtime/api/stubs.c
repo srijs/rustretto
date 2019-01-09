@@ -8,7 +8,7 @@
 
 struct vtable_printstream {
     uint32_t length;
-    void *padding[40];
+    void *padding[43];
     void *println_string;
 };
 
@@ -17,7 +17,7 @@ static void printstream_println_string_stub(ref_t _this, ref_t string) {
 }
 
 static struct vtable_printstream VTABLE_PRINTSTREAM = {
-    .length = 41,
+    .length = 44,
     .println_string = printstream_println_string_stub
 };
 

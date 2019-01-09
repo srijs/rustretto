@@ -13,5 +13,6 @@ cases! {
     compare_long,
     compare_address,
     fields,
-    array
+    array,
+    interfaces
 }

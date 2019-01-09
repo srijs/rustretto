@@ -2,7 +2,7 @@ use std::fmt::{self, Write};
 use std::sync::Arc;
 
 use classfile::descriptors::{FieldType, MethodDescriptor, ParameterDescriptor};
-use failure::Fallible;
+use failure::{bail, Fallible};
 use fnv::FnvBuildHasher;
 use indexmap::IndexMap;
 use strbuf::StrBuf;
@@ -277,22 +277,39 @@ impl<'a> DeclGen<'a> {
     }
 
     fn gen_vtable_type(&mut self, class_name: &StrBuf) -> Fallible<DeclIdentifier> {
+        let class_file = match self.classes.get(class_name)? {
+            Class::File(class_file) => class_file,
+            Class::Array(_) => bail!("can't generate vtable for array"),
+        };
         let vtable = self.vtables.get(class_name)?;
         let vtable_name = mangle::mangle_vtable_name(class_name);
         writeln!(self.out, "%{} = type {{", vtable_name)?;
+        if !class_file.is_interface() {
+            writeln!(self.out, "  i32, ; <number of methods>")?;
+        }
+        for (idx, (key, _)) in vtable.iter_methods().enumerate() {
+            writeln!(
+                self.out,
+                "  {} *, ; #{} method {}",
+                GenFunctionType(&key.method_descriptor),
+                idx,
+                key.method_name
+            )?;
+        }
         write!(self.out, "  i32")?;
-        if !vtable.is_empty() {
+        if vtable.interface_count() > 0 {
             write!(self.out, ",")?;
         }
-        writeln!(self.out, " ; <number of table entries>")?;
-        for (idx, (key, _)) in vtable.iter().enumerate() {
-            write!(self.out, "  {} *", GenFunctionType(&key.method_descriptor))?;
-            if idx < vtable.len() - 1 {
+        writeln!(self.out, " ; <number of interfaces>")?;
+        for (idx, (name, _)) in vtable.iter_interfaces().enumerate() {
+            writeln!(self.out, "  i8*,")?;
+            write!(self.out, "  i32")?;
+            if idx < vtable.interface_count() - 1 {
                 write!(self.out, ",")?;
             } else {
                 write!(self.out, "")?;
             }
-            writeln!(self.out, " ; {}", key.method_name)?;
+            writeln!(self.out, " ; #{} interface {}", idx, name)?;
         }
         writeln!(self.out, "}}")?;
 

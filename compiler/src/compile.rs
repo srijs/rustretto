@@ -22,17 +22,20 @@ impl Compiler {
     }
 
     pub fn compile(&mut self, class_name: &StrBuf, main: bool) -> Fallible<String> {
-        let cf = match self.classes.get(&class_name)? {
+        let class_file = match self.classes.get(&class_name)? {
             Class::File(class_file) => class_file,
             class => bail!("unexpected class type {:?}", class),
         };
 
         let mut classgen = self.codegen.generate_class(class_name)?;
 
-        classgen.gen_vtable_const(class_name)?;
+        classgen.gen_vtable_const(&class_file)?;
 
-        for method in cf.methods.iter() {
-            let name = cf.constant_pool.get_utf8(method.name_index).unwrap();
+        for method in class_file.methods.iter() {
+            let name = class_file
+                .constant_pool
+                .get_utf8(method.name_index)
+                .unwrap();
             log::debug!("compiling method {} of class {}", name, class_name);
 
             let mut args = Vec::new();
@@ -46,7 +49,12 @@ impl Compiler {
             }
 
             if method.is_native() {
-                classgen.gen_native_method(&method, &args, &cf.constant_pool)?;
+                classgen.gen_native_method(&method, &args, &class_file.constant_pool)?;
+                continue;
+            }
+
+            if method.is_abstract() {
+                classgen.gen_abstract_method(&method, &args, &class_file.constant_pool)?;
                 continue;
             }
 
@@ -55,10 +63,10 @@ impl Compiler {
             let blocks = translate::translate_method(
                 code.disassemble(),
                 state,
-                &cf.constant_pool,
+                &class_file.constant_pool,
                 &mut var_id_gen,
             )?;
-            classgen.gen_method(&method, &blocks, &cf.constant_pool)?;
+            classgen.gen_method(&method, &blocks, &class_file.constant_pool)?;
 
             if &**name == "<clinit>" {
                 classgen.gen_class_init()?;

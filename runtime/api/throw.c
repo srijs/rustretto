@@ -30,3 +30,8 @@ void _Jrt_throw(ref_t _throwable) {
 
     exit(EXIT_FAILURE);
 }
+
+void _Jrt_abstract() {
+    fprintf(stderr, "Invoked abstract method. Aborting.");
+    abort();
+}

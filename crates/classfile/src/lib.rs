@@ -135,6 +135,10 @@ impl ClassFile {
         self.super_class
             .map(|idx| self.constant_pool.get_class(idx).unwrap())
     }
+
+    pub fn is_interface(&self) -> bool {
+        self.access_flags.contains(ClassAccessFlags::INTERFACE)
+    }
 }
 
 struct ClassFileParser {

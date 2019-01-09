@@ -44,11 +44,20 @@ impl<'a> PreludeCodeGen<'a> {
             self.out,
             "declare i32 @_Jrt_start(i32, i8**, void (%ref) *)"
         )?;
-        writeln!(self.out, "declare %ref @_Jrt_new(i64, i8*)")?;
+        writeln!(self.out, "declare %ref @_Jrt_object_new(i64, i8*)")?;
+        writeln!(
+            self.out,
+            "declare i8* @_Jrt_object_vtable_lookup(%ref, i64)"
+        )?;
+        writeln!(
+            self.out,
+            "declare i8* @_Jrt_object_itable_lookup(%ref, i8*, i64)"
+        )?;
         writeln!(self.out, "declare %ref @_Jrt_array_new(i32, i64)")?;
         writeln!(self.out, "declare i32 @_Jrt_array_length(%ref)")?;
         writeln!(self.out, "declare i8* @_Jrt_array_element_ptr(%ref)")?;
         writeln!(self.out, "declare void @_Jrt_throw(%ref) noreturn")?;
+        writeln!(self.out, "declare void @_Jrt_abstract() noreturn")?;
         writeln!(self.out, "declare %ref @_Jrt_ldstr(i8*)")?;
 
         for index in self.class.constant_pool.indices() {

@@ -1,5 +1,5 @@
 CC=cc
-CFLAGS=-O3 -Wall
+CFLAGS=-O3 -Wall -g
 
 ARCHIVE = libruntime.a
 HEADERS = lib/ref.h lib/array.h lib/string.h lib/extern.h lib/thread.h lib/utils.h

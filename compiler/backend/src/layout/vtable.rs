@@ -1,10 +1,10 @@
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 
-use classfile::{MethodAccessFlags, MethodDescriptor};
+use classfile::MethodDescriptor;
 use failure::{bail, Fallible};
 use fnv::{FnvBuildHasher, FnvHashMap};
-use indexmap::{Equivalent, IndexMap};
+use indexmap::{map::Entry as IndexMapEntry, Equivalent, IndexMap};
 use strbuf::StrBuf;
 
 use frontend::classes::ClassGraph;
@@ -61,45 +61,60 @@ impl<'a> Equivalent<MethodDispatchKey> for LookupKey<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MethodDispatchTarget {
     pub class_name: StrBuf,
-    pub is_abstract: bool,
-    pub is_override: bool,
+    pub method_index_upper: usize,
+    pub method_index_lower: usize,
+}
+
+#[derive(Debug, Default)]
+struct VTableInner {
+    // map from method signatures to resolved targets
+    target_map: IndexMap<MethodDispatchKey, MethodDispatchTarget, FnvBuildHasher>,
+    // ordered list of indices into the target_map
+    methods: Vec<usize>,
+    // map from interface names to indices into the methods vector
+    interfaces: FnvHashMap<StrBuf, usize>,
 }
 
 #[derive(Clone, Debug)]
 pub struct VTable {
-    table: Arc<IndexMap<MethodDispatchKey, MethodDispatchTarget, FnvBuildHasher>>,
+    inner: Arc<VTableInner>,
 }
 
 impl VTable {
-    pub fn iter(&self) -> impl Iterator<Item = (&MethodDispatchKey, &MethodDispatchTarget)> {
-        self.table.iter()
+    pub fn iter_methods(
+        &self,
+    ) -> impl Iterator<Item = (&MethodDispatchKey, &MethodDispatchTarget)> {
+        self.inner
+            .methods
+            .iter()
+            .map(move |idx| self.inner.target_map.get_index(*idx).unwrap())
     }
 
-    pub fn len(&self) -> usize {
-        self.table.len()
+    pub fn iter_interfaces(&self) -> impl Iterator<Item = (&StrBuf, &usize)> {
+        self.inner.interfaces.iter()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
+    pub fn method_count(&self) -> usize {
+        self.inner.methods.len()
+    }
+
+    pub fn interface_count(&self) -> usize {
+        self.inner.interfaces.len()
     }
 
     pub fn get(
         &self,
         method_name: &str,
         method_descriptor: &MethodDescriptor,
-    ) -> Option<(usize, &MethodDispatchTarget)> {
+    ) -> Option<&MethodDispatchTarget> {
         let key = LookupKey {
             method_name,
             method_descriptor,
         };
-        if let Some((idx, _, target)) = self.table.get_full(&key) {
-            Some((idx, target))
-        } else {
-            None
-        }
+        self.inner.target_map.get(&key)
     }
 }
 
@@ -120,10 +135,10 @@ impl VTableMap {
     pub fn get(&self, name: &StrBuf) -> Fallible<VTable> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.contains_key(name) {
-            let mut table = IndexMap::default();
-            self.build_table(name, &mut table)?;
+            let mut table_inner = VTableInner::default();
+            self.build_table(name, &mut table_inner, 0)?;
             let vtable = VTable {
-                table: Arc::new(table),
+                inner: Arc::new(table_inner),
             };
             inner.insert(name.to_owned(), vtable);
         }
@@ -133,19 +148,41 @@ impl VTableMap {
     fn build_table(
         &self,
         name: &StrBuf,
-        table: &mut IndexMap<MethodDispatchKey, MethodDispatchTarget, FnvBuildHasher>,
+        table_inner: &mut VTableInner,
+        method_offset: usize,
     ) -> Fallible<()> {
         let classfile = match self.classes.get(name)? {
             Class::File(classfile) => classfile,
             Class::Array(_) => bail!("can't build vtable for array"),
         };
 
-        if let Some(super_class) = classfile.get_super_class() {
-            let super_class_name = classfile
+        if !classfile.is_interface() {
+            if let Some(super_class) = classfile.get_super_class() {
+                let super_class_name = classfile
+                    .constant_pool
+                    .get_utf8(super_class.name_index)
+                    .unwrap();
+                self.build_table(super_class_name, table_inner, method_offset)?;
+            }
+        }
+
+        for cidx in classfile.interfaces.iter() {
+            let interface_constant = classfile.constant_pool.get_class(*cidx).unwrap();
+            let interface_name = classfile
                 .constant_pool
-                .get_utf8(super_class.name_index)
+                .get_utf8(interface_constant.name_index)
                 .unwrap();
-            self.build_table(super_class_name, table)?;
+            if let Some(method_index) = table_inner.interfaces.get(&*interface_name) {
+                // skip interfaces that are already implemented by superclasses
+                if *method_index >= method_offset {
+                    continue;
+                }
+            }
+            let interface_method_offset = table_inner.methods.len();
+            self.build_table(interface_name, table_inner, interface_method_offset)?;
+            table_inner
+                .interfaces
+                .insert(interface_name.clone(), interface_method_offset);
         }
 
         for method in classfile.methods.iter() {
@@ -169,16 +206,29 @@ impl VTableMap {
                 method_name,
                 method_descriptor: method.descriptor.clone(),
             };
-            let is_abstract = method.access_flags.contains(MethodAccessFlags::ABSTRACT);
-            let is_override = table.contains_key(&key);
-            table.insert(
-                key,
-                MethodDispatchTarget {
-                    class_name: classfile.get_name().to_owned(),
-                    is_abstract,
-                    is_override,
-                },
-            );
+
+            let class_name = classfile.get_name().to_owned();
+            let method_index = table_inner.methods.len();
+
+            match table_inner.target_map.entry(key) {
+                IndexMapEntry::Vacant(entry) => {
+                    table_inner.methods.push(entry.index());
+                    entry.insert(MethodDispatchTarget {
+                        class_name,
+                        method_index_lower: method_index,
+                        method_index_upper: method_index,
+                    });
+                }
+                IndexMapEntry::Occupied(mut entry) => {
+                    if entry.get().method_index_upper < method_offset {
+                        entry.get_mut().method_index_upper = method_index;
+                        table_inner.methods.push(entry.index());
+                    }
+                    if !classfile.is_interface() {
+                        entry.get_mut().class_name = class_name;
+                    }
+                }
+            }
         }
 
         Ok(())

@@ -76,7 +76,7 @@ impl<'a> ExprCodeGen<'a> {
             )?;
             writeln!(
                 self.out,
-                "  {} = call %ref @_Jrt_new(i64 %t{}, i8* bitcast ({vtyp}* {vtbl} to i8*))",
+                "  {} = call %ref @_Jrt_object_new(i64 %t{}, i8* bitcast ({vtyp}* {vtbl} to i8*))",
                 assign,
                 tmp_size_int,
                 vtyp = vtable_type,
@@ -112,61 +112,67 @@ impl<'a> ExprCodeGen<'a> {
         consts: &ConstantPool,
         dest: Dest,
     ) -> Fallible<()> {
-        let method_ref = consts.get_method_ref(expr.index).unwrap();
-        let method_name = consts.get_utf8(method_ref.name_index).unwrap();
-        let method_class = consts.get_class(method_ref.class_index).unwrap();
+        let method_name = consts.get_utf8(expr.method.name_index).unwrap();
+        let method_class = consts.get_class(expr.method.class_index).unwrap();
         let method_class_name = consts.get_utf8(method_class.name_index).unwrap();
 
         let fptr = match expr.target {
             InvokeTarget::Virtual(ref var) => {
-                let vtable_type = self.decls.add_vtable_type(method_class_name)?;
-
                 let vtable = self.vtables.get(method_class_name)?;
-                let (offset, _) = vtable.get(method_name, &method_ref.descriptor).unwrap();
+                let target = vtable.get(method_name, &expr.method.descriptor).unwrap();
 
-                writeln!(self.out, "  ; prepare virtual dispatch")?;
-                let tmp_vtblraw = self.var_id_gen.gen();
-                writeln!(
-                    self.out,
-                    "  %t{vtblraw} = extractvalue %ref {}, 1",
-                    OpVal(var),
-                    vtblraw = tmp_vtblraw
-                )?;
-                let tmp_vtbl = self.var_id_gen.gen();
-                writeln!(
-                    self.out,
-                    "  %t{vtbl} = bitcast i8* %t{vtblraw} to {vtyp}*",
-                    vtyp = vtable_type,
-                    vtbl = tmp_vtbl,
-                    vtblraw = tmp_vtblraw
-                )?;
-                let tmp_fptrptr = self.var_id_gen.gen();
-                writeln!(
-                    self.out,
-                    "  %t{fptrptr} = getelementptr {vtyp}, {vtyp}* %t{vtbl}, i64 0, i32 {offset}",
-                    offset = offset + 1,
-                    vtyp = vtable_type,
-                    vtbl = tmp_vtbl,
-                    fptrptr = tmp_fptrptr
-                )?;
                 let tmp_fptr = self.var_id_gen.gen();
                 writeln!(
                     self.out,
-                    "  %t{fptr} = load {ftyp}*, {ftyp}** %t{fptrptr}",
+                    "  %t{fptr} = call i8* @_Jrt_object_vtable_lookup(%ref {object}, i64 {index})",
                     fptr = tmp_fptr,
-                    fptrptr = tmp_fptrptr,
-                    ftyp = GenFunctionType(&method_ref.descriptor)
+                    object = OpVal(var),
+                    index = target.method_index_lower
                 )?;
-                writeln!(self.out, "  ; invoke {}", method_name)?;
+                let tmp_fptr_cast = self.var_id_gen.gen();
+                writeln!(
+                    self.out,
+                    "  %t{fptr_cast} = bitcast i8* %t{fptr} to {ftyp}*",
+                    fptr_cast = tmp_fptr_cast,
+                    fptr = tmp_fptr,
+                    ftyp = GenFunctionType(&expr.method.descriptor)
+                )?;
 
-                format!("%t{}", tmp_fptr)
+                format!("%t{}", tmp_fptr_cast)
+            }
+            InvokeTarget::Interface(ref var) => {
+                let vtable = self.vtables.get(method_class_name)?;
+                let target = vtable.get(method_name, &expr.method.descriptor).unwrap();
+                let iface_vtable_type = self.decls.add_vtable_type(method_class_name)?;
+                let iface_vtable_const = self.decls.add_vtable_const(method_class_name)?;
+
+                let tmp_fptr = self.var_id_gen.gen();
+                writeln!(
+                    self.out,
+                    "  %t{fptr} = call i8* @_Jrt_object_itable_lookup(%ref {object}, i8* bitcast ({ivtyp}* {ivtbl} to i8*), i64 {index})",
+                    fptr = tmp_fptr,
+                    object = OpVal(var),
+                    ivtyp = iface_vtable_type,
+                    ivtbl = iface_vtable_const,
+                    index = target.method_index_lower
+                )?;
+                let tmp_fptr_cast = self.var_id_gen.gen();
+                writeln!(
+                    self.out,
+                    "  %t{fptr_cast} = bitcast i8* %t{fptr} to {ftyp}*",
+                    fptr_cast = tmp_fptr_cast,
+                    fptr = tmp_fptr,
+                    ftyp = GenFunctionType(&expr.method.descriptor)
+                )?;
+
+                format!("%t{}", tmp_fptr_cast)
             }
             InvokeTarget::Special(_) => {
                 if method_class_name != self.class.get_name() {
                     self.decls.add_instance_method(
                         method_class_name,
                         method_name,
-                        &method_ref.descriptor,
+                        &expr.method.descriptor,
                     )?;
                 }
                 format!(
@@ -174,8 +180,8 @@ impl<'a> ExprCodeGen<'a> {
                     mangle::mangle_method_name(
                         method_class_name,
                         method_name,
-                        &method_ref.descriptor.ret,
-                        &method_ref.descriptor.params
+                        &expr.method.descriptor.ret,
+                        &expr.method.descriptor.params
                     )
                 )
             }
@@ -184,7 +190,7 @@ impl<'a> ExprCodeGen<'a> {
                     self.decls.add_static_method(
                         method_class_name,
                         method_name,
-                        &method_ref.descriptor,
+                        &expr.method.descriptor,
                     )?;
                 }
                 format!(
@@ -192,8 +198,8 @@ impl<'a> ExprCodeGen<'a> {
                     mangle::mangle_method_name(
                         method_class_name,
                         method_name,
-                        &method_ref.descriptor.ret,
-                        &method_ref.descriptor.params
+                        &expr.method.descriptor.ret,
+                        &expr.method.descriptor.params
                     )
                 )
             }
@@ -209,7 +215,7 @@ impl<'a> ExprCodeGen<'a> {
             self.out,
             "call {return_type} {fptr}(",
             fptr = fptr,
-            return_type = tlt_return_type(&method_ref.descriptor.ret)
+            return_type = tlt_return_type(&expr.method.descriptor.ret)
         )?;
 
         let mut args = vec![];
@@ -218,6 +224,7 @@ impl<'a> ExprCodeGen<'a> {
             InvokeTarget::Static => {}
             InvokeTarget::Special(ref var) => args.push(format!("%ref {}", OpVal(var))),
             InvokeTarget::Virtual(ref var) => args.push(format!("%ref {}", OpVal(var))),
+            InvokeTarget::Interface(ref var) => args.push(format!("%ref {}", OpVal(var))),
         };
 
         for var in expr.args.iter() {
