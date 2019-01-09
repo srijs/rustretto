@@ -16,10 +16,10 @@ uint32_t _Jrt_start(uint32_t argc, char **argv, void (*static_main_method)(ref_t
     ref_t args;
     if (argc > 0) {
         args = array_new(argc - 1, sizeof(ref_t));
-        ref_t *elements = ARRAY_ELEMENTS_PTR(args, ref_t);
+        ref_t *data = ARRAY_DATA_PTR(args, ref_t);
         int i;
         for (i = 0; i < argc - 1; i++) {
-            elements[i] = string_new(argv[i + 1]);
+            data[i] = string_new(argv[i + 1]);
         }
     } else {
         args = array_new(0, sizeof(ref_t));
@@ -37,8 +37,16 @@ ref_t _Jrt_new(uint64_t size, void *vtable) {
     };
 }
 
-ref_t _Jrt_new_array(uint32_t count, uint64_t component_size) {
+ref_t _Jrt_array_new(uint32_t count, uint64_t component_size) {
     return array_new(count, component_size);
+}
+
+uint32_t _Jrt_array_length(ref_t ref) {
+    return ARRAY_BASE_PTR(ref)->length;
+}
+
+void *_Jrt_array_element_ptr(ref_t ref) {
+    return ARRAY_DATA_PTR(ref, void);
 }
 
 static int THREADNAME_MAX_LEN = 32;

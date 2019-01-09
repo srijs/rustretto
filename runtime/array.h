@@ -9,16 +9,22 @@
 #include "ref.h"
 #include "extern.h"
 
-#define ARRAY_LENGTH_PTR(ref) ((uint32_t *)ref.object)
-#define ARRAY_ELEMENTS_PTR(ref, typ) ((typ *)&((uint32_t *)ref.object)[1])
+#define ARRAY_BASE_PTR(ref) ((struct array_base *)ref.object)
+#define ARRAY_DATA_PTR(ref, typ) ((typ *)&ARRAY_BASE_PTR(ref)[1])
 
-static inline ref_t array_new(uint32_t count, uint64_t component_size) {
-    size_t size = sizeof(uint32_t) + count * component_size;
+struct array_base {
+    uint32_t length;
+    uint64_t width;
+};
+
+static inline ref_t array_new(uint32_t length, uint64_t width) {
+    size_t size = sizeof(struct array_base) + length * width;
     ref_t ref = {
         .object = malloc(size),
         .vtable = EXTERN_VTABLE_JAVA_LANG_OBJECT,
     };
-    *ARRAY_LENGTH_PTR(ref) = count;
+    ARRAY_BASE_PTR(ref)->length = length;
+    ARRAY_BASE_PTR(ref)->width = width;
     return ref;
 }
 

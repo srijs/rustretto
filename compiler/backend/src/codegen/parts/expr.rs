@@ -321,7 +321,7 @@ impl<'a> ExprCodeGen<'a> {
             let component_type = tlt_array_component_type(ctyp);
             writeln!(
                 self.out,
-                "  {} = call %ref @_Jrt_new_array(i32 {count}, i64 ptrtoint ({ctyp}* getelementptr ({ctyp}, {ctyp}* null, i64 1) to i64))",
+                "  {} = call %ref @_Jrt_array_new(i32 {count}, i64 ptrtoint ({ctyp}* getelementptr ({ctyp}, {ctyp}* null, i64 1) to i64))",
                 assign, count = OpVal(count), ctyp = component_type
             )?;
         }
@@ -330,13 +330,11 @@ impl<'a> ExprCodeGen<'a> {
 
     fn gen_expr_array_length(&mut self, aref: &Op, dest: Dest) -> Fallible<()> {
         if let Dest::Assign(assign) = dest {
-            let tmp_length_ptr = self.var_id_gen.gen();
-            self.gen_get_array_length_ptr(aref, Dest::Assign(DestAssign::Tmp(tmp_length_ptr)))?;
-
             writeln!(
                 self.out,
-                "  {} = load i32, i32* %t{}",
-                assign, tmp_length_ptr
+                "  {} = call i32 @_Jrt_array_length(%ref {})",
+                assign,
+                OpVal(aref)
             )?;
         }
         Ok(())
@@ -473,25 +471,6 @@ impl<'a> ExprCodeGen<'a> {
         Ok(())
     }
 
-    fn gen_get_array_length_ptr(&mut self, aref: &Op, dest: Dest) -> Fallible<()> {
-        if let Dest::Assign(assign) = dest {
-            let tmp_object_ptr = self.var_id_gen.gen();
-            writeln!(
-                self.out,
-                "  %t{} = extractvalue %ref {}, 0",
-                tmp_object_ptr,
-                OpVal(aref)
-            )?;
-
-            writeln!(
-                self.out,
-                "  {} = bitcast i8* %t{} to i32*",
-                assign, tmp_object_ptr
-            )?;
-        }
-        Ok(())
-    }
-
     fn gen_get_array_ptr(
         &mut self,
         ctyp: &Type,
@@ -502,22 +481,20 @@ impl<'a> ExprCodeGen<'a> {
         let component_type = tlt_array_component_type(&ctyp);
 
         if let Dest::Assign(assign) = dest {
-            let tmp_length_ptr = self.var_id_gen.gen();
-            self.gen_get_array_length_ptr(aref, Dest::Assign(DestAssign::Tmp(tmp_length_ptr)))?;
-
-            let tmp_member_start_ptr = self.var_id_gen.gen();
+            let tmp_element_ptr = self.var_id_gen.gen();
             writeln!(
                 self.out,
-                "  %t{} = getelementptr i32, i32* %t{}, i64 1",
-                tmp_member_start_ptr, tmp_length_ptr
+                "  %t{} = call i8* @_Jrt_array_element_ptr(%ref {})",
+                tmp_element_ptr,
+                OpVal(aref)
             )?;
 
-            let tmp_member_ptr = self.var_id_gen.gen();
+            let tmp_element_ptr_cast = self.var_id_gen.gen();
             writeln!(
                 self.out,
-                "  %t{} = bitcast i32* %t{} to {ctyp}*",
-                tmp_member_ptr,
-                tmp_member_start_ptr,
+                "  %t{} = bitcast i8* %t{} to {ctyp}*",
+                tmp_element_ptr_cast,
+                tmp_element_ptr,
                 ctyp = component_type
             )?;
 
@@ -525,7 +502,7 @@ impl<'a> ExprCodeGen<'a> {
                 self.out,
                 "  {} = getelementptr {ctyp}, {ctyp}* %t{}, i32 {idx}",
                 assign,
-                tmp_member_ptr,
+                tmp_element_ptr_cast,
                 idx = OpVal(idx),
                 ctyp = component_type
             )?;
