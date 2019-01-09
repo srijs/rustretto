@@ -2,8 +2,8 @@ CC=cc
 CFLAGS=-O3 -Wall
 
 ARCHIVE = libruntime.a
-HEADERS = ref.h array.h string.h extern.h thread.h utils.h
-OBJECTS = api.o native.o stubs.o
+HEADERS = lib/ref.h lib/array.h lib/string.h lib/extern.h lib/thread.h lib/utils.h
+OBJECTS = api/start.o api/object.o api/array.o api/string.o api/throw.o api/native.o api/stubs.o
 
 $(ARCHIVE): $(OBJECTS)
 	ar ru $@ $^

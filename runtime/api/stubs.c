@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <stddef.h>
 
-#include "ref.h"
-#include "utils.h"
+#include "../lib/ref.h"
+#include "../lib/utils.h"
 
 struct vtable_printstream {
     uint32_t length;

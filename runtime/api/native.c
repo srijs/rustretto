@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "ref.h"
-#include "utils.h"
+#include "../lib/ref.h"
+#include "../lib/utils.h"
 
 void _ZN4java4lang6Object15registerNativesIu9Jed9fc4b9EEvv() {}
 
