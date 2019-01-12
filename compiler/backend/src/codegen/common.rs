@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 use classfile::descriptors::{
     BaseType, FieldType, MethodDescriptor, ParameterDescriptor, ReturnTypeDescriptor,
@@ -67,6 +67,26 @@ impl<T: fmt::Display> fmt::Display for GenSizeOf<T> {
             "ptrtoint ({ctyp}* getelementptr ({ctyp}, {ctyp}* null, i64 1) to i64)",
             ctyp = self.0
         )
+    }
+}
+
+pub struct GenStringConst<'a>(pub &'a str);
+
+impl<'a> fmt::Display for GenStringConst<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("c\"")?;
+        for byte in self.0.as_bytes() {
+            match byte {
+                b'\x20'...b'\x7e' if *byte != b'"' && *byte != b'\\' => {
+                    f.write_char(char::from(*byte))?
+                }
+                _ => {
+                    write!(f, "\\{:02x}", byte)?;
+                }
+            }
+        }
+        f.write_str("\\00\"")?;
+        Ok(())
     }
 }
 
@@ -149,5 +169,34 @@ pub fn tlt_type(t: &Type) -> &'static str {
         Type::Float => "float",
         Type::Double => "double",
         Type::Reference => "%ref",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gen_string_const_alphanum() {
+        let formatted = GenStringConst("foo123").to_string();
+        assert_eq!(r#"c"foo123\00""#, formatted)
+    }
+
+    #[test]
+    fn gen_string_const_punctuation() {
+        let formatted = GenStringConst("foo%&\\\"").to_string();
+        assert_eq!(r#"c"foo%&\5c\22\00""#, formatted)
+    }
+
+    #[test]
+    fn gen_string_const_whitespace() {
+        let formatted = GenStringConst("foo \t\n\r").to_string();
+        assert_eq!(r#"c"foo \09\0a\0d\00""#, formatted)
+    }
+
+    #[test]
+    fn gen_string_const_unicode() {
+        let formatted = GenStringConst("foo🔥").to_string();
+        assert_eq!(r#"c"foo\f0\9f\94\a5\00""#, formatted)
     }
 }

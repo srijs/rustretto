@@ -67,16 +67,13 @@ impl<'a> PreludeCodeGen<'a> {
                 let utf8_index = string_const.string_index;
                 writeln!(self.out)?;
                 let utf8 = self.class.constant_pool.get_utf8(utf8_index).unwrap();
-                write!(
+                writeln!(
                     self.out,
-                    "@.str{} = internal constant [{} x i8] [",
+                    "@.str{} = internal constant [{} x i8] {}",
                     utf8_index.into_u16(),
-                    utf8.len() + 1
+                    utf8.len() + 1,
+                    GenStringConst(&*utf8)
                 )?;
-                for byte in utf8.as_bytes() {
-                    write!(self.out, " i8 {},", byte)?;
-                }
-                writeln!(self.out, " i8 0 ]")?;
             }
         }
         Ok(())
