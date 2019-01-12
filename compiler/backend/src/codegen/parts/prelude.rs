@@ -45,6 +45,7 @@ impl<'a> PreludeCodeGen<'a> {
             "declare i32 @_Jrt_start(i32, i8**, void (%ref) *)"
         )?;
         writeln!(self.out, "declare %ref @_Jrt_object_new(i64, i8*)")?;
+        writeln!(self.out, "declare i8* @_Jrt_object_field_ptr(%ref)")?;
         writeln!(
             self.out,
             "declare i8* @_Jrt_object_vtable_lookup(%ref, i64)"

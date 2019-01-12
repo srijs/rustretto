@@ -520,26 +520,26 @@ impl<'a> ExprCodeGen<'a> {
 
             let object_type = self.decls.add_object_type(field_class_name)?;
 
-            let tmp_object_ptr = self.var_id_gen.gen();
+            let tmp_field_ptr = self.var_id_gen.gen();
             writeln!(
                 self.out,
-                "  %t{} = extractvalue %ref {}, 0",
-                tmp_object_ptr,
+                "  %t{} = call i8* @_Jrt_object_field_ptr(%ref {})",
+                tmp_field_ptr,
                 OpVal(object)
             )?;
 
-            let tmp_object_ptr_cast = self.var_id_gen.gen();
+            let tmp_field_ptr_cast = self.var_id_gen.gen();
             writeln!(
                 self.out,
                 "  %t{} = bitcast i8* %t{} to {}*",
-                tmp_object_ptr_cast, tmp_object_ptr, object_type
+                tmp_field_ptr_cast, tmp_field_ptr, object_type
             )?;
 
             writeln!(
                 self.out,
                 "  {} = getelementptr {otyp}, {otyp}* %t{}, i64 0, i32 {field_index}",
                 assign,
-                tmp_object_ptr_cast,
+                tmp_field_ptr_cast,
                 otyp = object_type,
                 field_index = field_layout.get(field_name, &field_ref.descriptor).unwrap()
             )?;
