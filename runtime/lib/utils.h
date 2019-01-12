@@ -7,8 +7,8 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define PANIC(format, ...) {\
-    fprintf(stderr, format, ##__VA_ARGS__);\
+#define PANIC(...) {\
+    fprintf(stderr, __VA_ARGS__);\
     abort();\
 }
 

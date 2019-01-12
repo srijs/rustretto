@@ -9,7 +9,7 @@
 struct vtable_printstream {
     uint32_t length;
     void *padding[43];
-    void *println_string;
+    void (*println_string)(ref_t, ref_t);
 };
 
 static void printstream_println_string_stub(ref_t _this, ref_t string) {
@@ -26,9 +26,9 @@ ref_t _ZN4java4lang6System3outE = {
     .vtable = &VTABLE_PRINTSTREAM
 };
 
-struct {} _ZTVN4java4lang13StringBuilderE = {};
+struct ref_vtable_base _ZTVN4java4lang13StringBuilderE;
 
-struct {} _ZTVN4java4lang24IllegalArgumentExceptionE = {};
+struct ref_vtable_base _ZTVN4java4lang24IllegalArgumentExceptionE;
 
 void _ZN4java4lang13StringBuilder4initIu9J8cc45093EEvv(ref_t _this) {
     trap_unimplemented("java.lang.StringBuilder.<init>");
