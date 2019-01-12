@@ -142,6 +142,12 @@ pub enum CompareExpr {
 }
 
 #[derive(Debug)]
+pub enum MonitorStateTransition {
+    Enter,
+    Exit,
+}
+
+#[derive(Debug)]
 pub enum Expr {
     String(ConstantIndex),
     GetStatic(ConstantIndex),
@@ -156,6 +162,7 @@ pub enum Expr {
     ArrayLoad(Type, Op, Op),
     ArrayStore(Type, Op, Op, Op),
     Convert(ConvertExpr),
+    Monitor(Op, MonitorStateTransition),
 }
 
 #[derive(Debug)]
@@ -575,6 +582,15 @@ impl<'a> TranslateInstr<'a> {
         self.stmts.push(statement);
     }
 
+    fn monitor(&mut self, transition: MonitorStateTransition) {
+        let objectref = self.state.pop();
+        let statement = Statement {
+            assign: None,
+            expression: Expr::Monitor(objectref, transition),
+        };
+        self.stmts.push(statement);
+    }
+
     fn table_switch(self, table: &TableSwitch) -> Fallible<Option<TranslateNext>> {
         let value = self.state.pop();
         let default = BlockId::from_addr_with_offset(self.range.start, table.default);
@@ -658,6 +674,8 @@ fn translate_instructions(
             Instr::I2C => t.convert(ConvertOperation::IntToChar),
             // object operations
             Instr::New(idx) => t.object_new(*idx),
+            Instr::MonitorEnter => t.monitor(MonitorStateTransition::Enter),
+            Instr::MonitorExit => t.monitor(MonitorStateTransition::Exit),
             // field operations
             Instr::GetStatic(idx) => t.get_static(*idx),
             Instr::GetField(idx) => t.get_field(*idx),

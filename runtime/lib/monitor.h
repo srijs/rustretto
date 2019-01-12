@@ -22,6 +22,14 @@ static inline void monitor_init(monitor_t *monitor) {
     monitor->condvar = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 }
 
+static inline void monitor_enter(monitor_t *monitor) {
+    ensure(pthread_mutex_lock(&monitor->mutex));
+}
+
+static inline void monitor_exit(monitor_t *monitor) {
+    ensure(pthread_mutex_unlock(&monitor->mutex));
+}
+
 static inline void monitor_wait(monitor_t *monitor, uint64_t timeout) {
     int err;
 

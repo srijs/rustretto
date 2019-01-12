@@ -5,6 +5,7 @@
 
 #include "../lib/ref.h"
 #include "../lib/object.h"
+#include "../lib/monitor.h"
 
 ref_t _Jrt_object_new(uint64_t size, void *vtable) {
     return object_new(size, vtable);
@@ -28,4 +29,15 @@ void *_Jrt_object_itable_lookup(ref_t ref, void *iface, uint64_t index) {
         }
     }
     return NULL;
+}
+
+void _Jrt_object_monitorenter(ref_t ref) {
+    monitor_t *monitor = &OBJECT_BASE_PTR(ref)->monitor;
+    monitor_enter(monitor);
+}
+
+void _Jrt_object_monitorexit(ref_t ref) {
+    monitor_t *monitor = &OBJECT_BASE_PTR(ref)->monitor;
+    // TODO: ensure calling thread owns the monitor
+    monitor_exit(monitor);
 }

@@ -8,7 +8,7 @@ use strbuf::StrBuf;
 use frontend::classes::ClassGraph;
 use frontend::translate::{
     AComparator, BinaryExpr, BinaryOperation, CompareExpr, ConvertExpr, ConvertOperation, Expr,
-    IComparator, InvokeExpr, InvokeTarget, Op,
+    IComparator, InvokeExpr, InvokeTarget, MonitorStateTransition, Op,
 };
 use frontend::types::Type;
 
@@ -49,6 +49,7 @@ impl<'a> ExprCodeGen<'a> {
                 self.gen_expr_array_store(ctyp, aref, idx, val)?
             }
             Expr::Convert(conv_expr) => self.gen_expr_convert(conv_expr, dest)?,
+            Expr::Monitor(oref, transition) => self.gen_expr_monitor(oref, transition)?,
         }
         Ok(())
     }
@@ -225,6 +226,26 @@ impl<'a> ExprCodeGen<'a> {
         }
 
         writeln!(self.out, ")")?;
+        Ok(())
+    }
+
+    fn gen_expr_monitor(&mut self, op: &Op, transition: &MonitorStateTransition) -> Fallible<()> {
+        match transition {
+            MonitorStateTransition::Enter => {
+                writeln!(
+                    self.out,
+                    "  call void @_Jrt_object_monitorenter(%ref {})",
+                    OpVal(op)
+                )?;
+            }
+            MonitorStateTransition::Exit => {
+                writeln!(
+                    self.out,
+                    "  call void @_Jrt_object_monitorexit(%ref {})",
+                    OpVal(op)
+                )?;
+            }
+        }
         Ok(())
     }
 

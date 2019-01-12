@@ -14,5 +14,6 @@ cases! {
     compare_address,
     fields,
     array,
-    interfaces
+    interfaces,
+    sync_block
 }

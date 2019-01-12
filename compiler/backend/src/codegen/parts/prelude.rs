@@ -54,6 +54,8 @@ impl<'a> PreludeCodeGen<'a> {
             self.out,
             "declare i8* @_Jrt_object_itable_lookup(%ref, i8*, i64)"
         )?;
+        writeln!(self.out, "declare void @_Jrt_object_monitorenter(%ref)")?;
+        writeln!(self.out, "declare void @_Jrt_object_monitorexit(%ref)")?;
         writeln!(self.out, "declare %ref @_Jrt_array_new(i32, i64)")?;
         writeln!(self.out, "declare i32 @_Jrt_array_length(%ref)")?;
         writeln!(self.out, "declare i8* @_Jrt_array_element_ptr(%ref)")?;

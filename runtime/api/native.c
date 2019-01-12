@@ -25,11 +25,13 @@ ref_t _ZN4java4lang6Object5cloneIu9J117cf78dEEN4java4lang6ObjectEv(ref_t _this) 
 
 void _ZN4java4lang6Object6notifyIu9Jec9f6595EEvv(ref_t this) {
     monitor_t *monitor = &OBJECT_BASE_PTR(this)->monitor;
+    // TODO: ensure calling thread owns the monitor
     monitor_notify_one(monitor);
 }
 
 void _ZN4java4lang6Object9notifyAllIu9J01f1085cEEvv(ref_t this) {
     monitor_t *monitor = &OBJECT_BASE_PTR(this)->monitor;
+    // TODO: ensure calling thread owns the monitor
     monitor_notify_all(monitor);
 }
 

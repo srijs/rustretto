@@ -1,0 +1,10 @@
+source: |
+    public class Test {
+        public static void main(String[] args) {
+            Object object = new Object();
+            synchronized (object) {
+                System.out.println("Hello, World!");
+            }
+        }
+    }
+output: "Hello, World!\n"
