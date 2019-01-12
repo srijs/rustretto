@@ -22,7 +22,7 @@ static inline ref_t object_new(uint32_t data_size, void *vtable) {
         .object = malloc(size),
         .vtable = vtable,
     };
-    OBJECT_BASE_PTR(ref)->monitor = (monitor_t)MONITOR_INITIALIZER;
+    monitor_init(&OBJECT_BASE_PTR(ref)->monitor);
     return ref;
 }
 

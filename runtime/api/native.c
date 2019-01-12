@@ -3,6 +3,8 @@
 #include <stddef.h>
 
 #include "../lib/ref.h"
+#include "../lib/object.h"
+#include "../lib/monitor.h"
 #include "../lib/utils.h"
 
 void _ZN4java4lang6Object15registerNativesIu9Jed9fc4b9EEvv() {}
@@ -21,14 +23,18 @@ ref_t _ZN4java4lang6Object5cloneIu9J117cf78dEEN4java4lang6ObjectEv(ref_t _this) 
     return REF_NULL;
 }
 
-void _ZN4java4lang6Object6notifyIu9Jec9f6595EEvv(ref_t _this) {
-    trap_unimplemented("java.lang.Object.notify");
+void _ZN4java4lang6Object6notifyIu9Jec9f6595EEvv(ref_t this) {
+    monitor_t *monitor = &OBJECT_BASE_PTR(this)->monitor;
+    monitor_notify_one(monitor);
 }
 
-void _ZN4java4lang6Object9notifyAllIu9J01f1085cEEvv(ref_t _this) {
-    trap_unimplemented("java.lang.Object.notifyAll");
+void _ZN4java4lang6Object9notifyAllIu9J01f1085cEEvv(ref_t this) {
+    monitor_t *monitor = &OBJECT_BASE_PTR(this)->monitor;
+    monitor_notify_all(monitor);
 }
 
-void _ZN4java4lang6Object4waitIu9J70446489EEvl(ref_t _this) {
-    trap_unimplemented("java.lang.Object.wait");
+void _ZN4java4lang6Object4waitIu9J70446489EEvl(ref_t this, uint64_t timeout) {
+    monitor_t *monitor = &OBJECT_BASE_PTR(this)->monitor;
+    // TODO: ensure calling thread owns the monitor
+    monitor_wait(monitor, timeout);
 }
