@@ -4,9 +4,9 @@ use std::sync::Arc;
 use classfile::{ClassFile, ConstantPool, Method};
 use failure::Fallible;
 
-use frontend::blocks::BlockGraph;
+use frontend::blocks::{BlockGraph, PhiOperandSource};
 use frontend::classes::ClassGraph;
-use frontend::translate::{BasicBlock, BlockId, BranchStub, Expr, Statement, Switch};
+use frontend::translate::{BasicBlock, BranchStub, Expr, Statement, Switch};
 
 use crate::codegen::common::*;
 use crate::codegen::decls::DeclDatabase;
@@ -49,19 +49,15 @@ impl<'a> MethodCodeGen<'a> {
                 &method.descriptor.params
             )
         )?;
-        for (i, (_, var)) in blocks
-            .lookup(BlockId::start())
-            .incoming
-            .locals
-            .iter()
-            .enumerate()
-        {
+        for (i, (_, var)) in blocks.entry().locals.iter().enumerate() {
             if i > 0 {
                 write!(self.out, ", ")?;
             }
             write!(self.out, "{} {}", tlt_type(&var.get_type()), OpVal(var))?;
         }
         writeln!(self.out, ") {{")?;
+        writeln!(self.out, "entry:")?;
+        writeln!(self.out, "  br label %B0")?;
         for block in blocks.blocks() {
             self.gen_block(block, blocks, consts)?;
         }
@@ -148,11 +144,18 @@ impl<'a> MethodCodeGen<'a> {
         let phis = blocks.phis(block);
         for (var, bindings) in phis.iter() {
             write!(self.out, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
-            for (i, (out_var, addr)) in bindings.iter().enumerate() {
+            for (i, phi_operand) in bindings.iter().enumerate() {
                 if i > 0 {
                     write!(self.out, ", ")?;
                 }
-                write!(self.out, "[ {}, %B{} ]", OpVal(out_var), addr)?;
+                match phi_operand.src {
+                    PhiOperandSource::Entry => {
+                        write!(self.out, "[ {}, %entry ]", OpVal(&phi_operand.op))?;
+                    }
+                    PhiOperandSource::Block(addr) => {
+                        write!(self.out, "[ {}, %B{} ]", OpVal(&phi_operand.op), addr)?;
+                    }
+                }
             }
             writeln!(self.out)?;
         }

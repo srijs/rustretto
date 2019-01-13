@@ -893,8 +893,8 @@ pub fn translate_method(
     var_id_gen: &mut VarIdGen,
 ) -> Fallible<BlockGraph> {
     let instr_block_map = InstructionBlockMap::build(dasm)?;
-    let mut blocks = BlockGraph::new();
-    let mut remaining = vec![(BlockId::start(), incoming)];
+    let mut blocks = BlockGraph::new(incoming.clone());
+    let mut remaining = vec![(BlockId::start(), incoming.new_with_same_shape(var_id_gen))];
     while let Some((addr, state)) = remaining.pop() {
         if !blocks.contains(addr) {
             let instr_block = instr_block_map.block_starting_at(addr.0);

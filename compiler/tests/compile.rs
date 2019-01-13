@@ -6,6 +6,7 @@ cases! {
     unicode,
     clinit,
     for_loop,
+    while_loop,
     if_else,
     inheritance,
     table_switch,
