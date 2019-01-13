@@ -53,8 +53,8 @@ impl<'a> fmt::Display for OpVal<'a> {
             Op::Const(c) => match c {
                 Const::Int(x) => write!(f, "{}", x),
                 Const::Long(x) => write!(f, "{}", x),
-                Const::Float(x) => write!(f, "{:016x}", x.to_bits()),
-                Const::Double(x) => write!(f, "{:016x}", x.to_bits()),
+                Const::Float(x) => write!(f, "0x{:016x}", f64::from(*x).to_bits()),
+                Const::Double(x) => write!(f, "0x{:016x}", x.to_bits()),
                 Const::Null => write!(f, "zeroinitializer"),
             },
         }
