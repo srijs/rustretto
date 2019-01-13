@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
+#include <math.h>
 
 #include "../lib/ref.h"
 #include "../lib/utils.h"
@@ -41,4 +42,12 @@ void _ZN4java4lang24IllegalArgumentException4initIu9Jffb6fc97EEvN4java4lang6Stri
 ref_t _ZN4java4lang7Integer11toHexStringIu9Jab2e85aaEEN4java4lang6StringEi(int64_t _value) {
     trap_unimplemented("java.lang.Integer.toHexString");
     return REF_NULL;
+}
+
+uint32_t _ZN4java4lang5Float5isNaNIu9Jbff373faEEu7booleanf(float value) {
+    return isnan(value);
+}
+
+uint32_t _ZN4java4lang6Double5isNaNIu9J0cf9d461EEu7booleand(double value) {
+    return isnan(value);
 }
