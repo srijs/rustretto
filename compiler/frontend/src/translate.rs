@@ -78,6 +78,8 @@ pub struct InvokeExpr {
 pub enum Const {
     Int(i32),
     Long(i64),
+    Float(f32),
+    Double(f64),
     Null,
 }
 
@@ -86,6 +88,8 @@ impl Const {
         match self {
             Const::Int(_) => Type::Int,
             Const::Long(_) => Type::Long,
+            Const::Float(_) => Type::Float,
+            Const::Double(_) => Type::Double,
             Const::Null => Type::Reference,
         }
     }
@@ -112,7 +116,10 @@ pub enum BinaryOperation {
     Sub,
     BitwiseAnd,
     BitwiseOr,
+    BitwiseXor,
     ShiftLeft,
+    ShiftRightLogical,
+    ShiftRightArithmetic,
 }
 
 #[derive(Debug)]
@@ -126,6 +133,8 @@ pub struct BinaryExpr {
 #[derive(Debug)]
 pub enum ConvertOperation {
     IntToChar,
+    IntToByte,
+    IntToShort,
 }
 
 #[derive(Debug)]
@@ -135,10 +144,18 @@ pub struct ConvertExpr {
 }
 
 #[derive(Debug)]
+pub enum NaNCmpMode {
+    Greater,
+    Less,
+}
+
+#[derive(Debug)]
 pub enum CompareExpr {
     ICmp(IComparator, Op, Op),
     ACmp(AComparator, Op, Op),
     LCmp(Op, Op),
+    FCmp(Op, Op, NaNCmpMode),
+    DCmp(Op, Op, NaNCmpMode),
 }
 
 #[derive(Debug)]
@@ -257,6 +274,15 @@ impl<'a> TranslateInstr<'a> {
         self.state.push(var);
     }
 
+    fn duplicate2(&mut self) {
+        let var1 = self.state.pop();
+        let var2 = self.state.pop();
+        self.state.push(var2.clone());
+        self.state.push(var1.clone());
+        self.state.push(var2);
+        self.state.push(var1);
+    }
+
     fn pop(&mut self, n: usize) {
         self.state.pop_n(n);
     }
@@ -333,6 +359,13 @@ impl<'a> TranslateInstr<'a> {
             Constant::Long(ref long_const) => {
                 self.state.push(Op::Const(Const::Long(long_const.value)));
             }
+            Constant::Float(ref float_const) => {
+                self.state.push(Op::Const(Const::Float(float_const.value)));
+            }
+            Constant::Double(ref double_const) => {
+                self.state
+                    .push(Op::Const(Const::Double(double_const.value)));
+            }
             constant => panic!("unsupported load of constant {:?}", constant),
         }
     }
@@ -345,6 +378,30 @@ impl<'a> TranslateInstr<'a> {
         let statement = Statement {
             assign: Some(var),
             expression: Expr::Compare(CompareExpr::LCmp(value1, value2)),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn fcmp(&mut self, mode: NaNCmpMode) {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        let var = self.var_id_gen.gen(Type::Int);
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::Compare(CompareExpr::FCmp(value1, value2, mode)),
+        };
+        self.stmts.push(statement);
+    }
+
+    fn dcmp(&mut self, mode: NaNCmpMode) {
+        let value2 = self.state.pop();
+        let value1 = self.state.pop();
+        let var = self.var_id_gen.gen(Type::Int);
+        self.state.push(Op::Var(var.clone()));
+        let statement = Statement {
+            assign: Some(var),
+            expression: Expr::Compare(CompareExpr::DCmp(value1, value2, mode)),
         };
         self.stmts.push(statement);
     }
@@ -552,6 +609,22 @@ impl<'a> TranslateInstr<'a> {
         )))
     }
 
+    fn if_acmpnull(self, offset: i16, comp: AComparator) -> Fallible<Option<TranslateNext>> {
+        let value = self.state.pop();
+        let if_addr = BlockId::from_addr_with_offset(self.range.start, i32::from(offset));
+        let else_addr = BlockId::from_addr(self.range.end);
+        let tmpvar = self.var_id_gen.gen(Type::Boolean);
+        let statement = Statement {
+            assign: Some(tmpvar.clone()),
+            expression: Expr::Compare(CompareExpr::ACmp(comp, value, Op::Const(Const::Null))),
+        };
+        self.stmts.push(statement);
+        Ok(Some(TranslateNext(
+            BranchStub::Switch(Switch::if_else(tmpvar, if_addr, else_addr)),
+            None,
+        )))
+    }
+
     fn object_new(&mut self, idx: u16) {
         let class = self.consts.get_class(ConstantIndex::from_u16(idx)).unwrap();
         let class_name = self.consts.get_utf8(class.name_index).unwrap();
@@ -568,6 +641,8 @@ impl<'a> TranslateInstr<'a> {
         let value = self.state.pop();
         let target_type = match operation {
             ConvertOperation::IntToChar => Type::Int,
+            ConvertOperation::IntToByte => Type::Int,
+            ConvertOperation::IntToShort => Type::Int,
         };
         let result = self.var_id_gen.gen(target_type);
         self.state.push(Op::Var(result.clone()));
@@ -650,15 +725,23 @@ fn translate_instructions(
             Instr::ALoad0 => t.load(0),
             Instr::ALoad1 => t.load(1),
             Instr::ALoad2 => t.load(2),
+            Instr::ALoad3 => t.load(3),
             Instr::ALoad(idx) => t.load(*idx as usize),
+            Instr::AStore0 => t.store(0),
             Instr::AStore1 => t.store(1),
             Instr::AStore2 => t.store(2),
+            Instr::AStore3 => t.store(3),
             Instr::AStore(idx) => t.store(*idx as usize),
             Instr::ILoad(idx) => t.load(*idx as usize),
             Instr::IStore(idx) => t.store(*idx as usize),
             Instr::LLoad(idx) => t.load(*idx as usize),
             Instr::LStore(idx) => t.store(*idx as usize),
+            Instr::FLoad(idx) => t.load(*idx as usize),
+            Instr::FStore(idx) => t.store(*idx as usize),
+            Instr::DLoad(idx) => t.load(*idx as usize),
+            Instr::DStore(idx) => t.store(*idx as usize),
             Instr::Dup => t.duplicate(),
+            Instr::Dup2 => t.duplicate2(),
             Instr::Pop => t.pop(1),
             Instr::Pop2 => t.pop(2),
             // arithmetic operations
@@ -668,10 +751,19 @@ fn translate_instructions(
             Instr::ISub => t.binary(Type::Int, BinaryOperation::Sub),
             Instr::IAnd => t.binary(Type::Int, BinaryOperation::BitwiseAnd),
             Instr::IOr => t.binary(Type::Int, BinaryOperation::BitwiseOr),
+            Instr::IXor => t.binary(Type::Int, BinaryOperation::BitwiseXor),
             Instr::IShL => t.binary(Type::Int, BinaryOperation::ShiftLeft),
+            Instr::IShR => t.binary(Type::Int, BinaryOperation::ShiftRightArithmetic),
+            Instr::IUShR => t.binary(Type::Int, BinaryOperation::ShiftRightLogical),
             Instr::IInc(idx, int) => t.iinc(*idx, i32::from(*int)),
+            Instr::FCmpG => t.fcmp(NaNCmpMode::Greater),
+            Instr::FCmpL => t.fcmp(NaNCmpMode::Less),
+            Instr::DCmpG => t.dcmp(NaNCmpMode::Greater),
+            Instr::DCmpL => t.dcmp(NaNCmpMode::Less),
             // conversion operations
             Instr::I2C => t.convert(ConvertOperation::IntToChar),
+            Instr::I2B => t.convert(ConvertOperation::IntToByte),
+            Instr::I2S => t.convert(ConvertOperation::IntToShort),
             // object operations
             Instr::New(idx) => t.object_new(*idx),
             Instr::MonitorEnter => t.monitor(MonitorStateTransition::Enter),
@@ -686,9 +778,20 @@ fn translate_instructions(
             Instr::ArrayLength => t.array_length(),
             Instr::AaLoad => t.array_load(Type::Reference),
             Instr::BaLoad => t.array_load(Type::Byte),
+            Instr::CaLoad => t.array_load(Type::Char),
+            Instr::DaLoad => t.array_load(Type::Double),
+            Instr::FaLoad => t.array_load(Type::Float),
             Instr::IaLoad => t.array_load(Type::Int),
+            Instr::LaLoad => t.array_load(Type::Long),
+            Instr::SaLoad => t.array_load(Type::Short),
             Instr::AaStore => t.array_store(Type::Reference),
+            Instr::BaStore => t.array_store(Type::Byte),
             Instr::CaStore => t.array_store(Type::Char),
+            Instr::DaStore => t.array_store(Type::Double),
+            Instr::FaStore => t.array_store(Type::Float),
+            Instr::IaStore => t.array_store(Type::Int),
+            Instr::LaStore => t.array_store(Type::Long),
+            Instr::SaStore => t.array_store(Type::Short),
             // contant load operations
             Instr::LdC(idx) => t.load_const(u16::from(*idx)),
             Instr::LdCW(idx) => t.load_const(*idx),
@@ -700,6 +803,11 @@ fn translate_instructions(
             Instr::IConst4 => t.push_const(Const::Int(4)),
             Instr::LConst0 => t.push_const(Const::Long(0)),
             Instr::LConst1 => t.push_const(Const::Long(1)),
+            Instr::FConst0 => t.push_const(Const::Float(0.0)),
+            Instr::FConst1 => t.push_const(Const::Float(1.0)),
+            Instr::FConst2 => t.push_const(Const::Float(2.0)),
+            Instr::DConst0 => t.push_const(Const::Double(0.0)),
+            Instr::DConst1 => t.push_const(Const::Double(1.0)),
             Instr::AConstNull => t.push_const(Const::Null),
             Instr::BiPush(b) => t.push_const(Const::Int(i32::from(*b))),
             Instr::SiPush(s) => t.push_const(Const::Int(i32::from(*s))),
@@ -720,11 +828,16 @@ fn translate_instructions(
             Instr::IfNe(offset) => return t.if_zcmp(*offset, IComparator::Ne),
             Instr::IfGe(offset) => return t.if_zcmp(*offset, IComparator::Ge),
             Instr::IfGt(offset) => return t.if_zcmp(*offset, IComparator::Gt),
+            Instr::IfICmpLt(offset) => return t.if_icmp(*offset, IComparator::Lt),
             Instr::IfICmpLe(offset) => return t.if_icmp(*offset, IComparator::Le),
+            Instr::IfICmpEq(offset) => return t.if_icmp(*offset, IComparator::Eq),
+            Instr::IfICmpNe(offset) => return t.if_icmp(*offset, IComparator::Ne),
             Instr::IfICmpGe(offset) => return t.if_icmp(*offset, IComparator::Ge),
             Instr::IfICmpGt(offset) => return t.if_icmp(*offset, IComparator::Gt),
             Instr::IfACmpEq(offset) => return t.if_acmp(*offset, AComparator::Eq),
             Instr::IfACmpNe(offset) => return t.if_acmp(*offset, AComparator::Ne),
+            Instr::IfNull(offset) => return t.if_acmpnull(*offset, AComparator::Eq),
+            Instr::IfNonNull(offset) => return t.if_acmpnull(*offset, AComparator::Ne),
             Instr::TableSwitch(table) => return t.table_switch(table),
             Instr::LookupSwitch(lookup) => return t.lookup_switch(lookup),
             // misc operations

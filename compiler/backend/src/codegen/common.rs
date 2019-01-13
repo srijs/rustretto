@@ -13,6 +13,7 @@ pub enum Dest {
     Assign(DestAssign),
 }
 
+#[derive(Clone)]
 pub enum DestAssign {
     Var(VarId),
     Tmp(u64),
@@ -50,8 +51,10 @@ impl<'a> fmt::Display for OpVal<'a> {
         match self.0 {
             Op::Var(v) => write!(f, "%v{}", v.1),
             Op::Const(c) => match c {
-                Const::Int(i) => write!(f, "{}", i),
-                Const::Long(j) => write!(f, "{}", j),
+                Const::Int(x) => write!(f, "{}", x),
+                Const::Long(x) => write!(f, "{}", x),
+                Const::Float(x) => write!(f, "{:016x}", x.to_bits()),
+                Const::Double(x) => write!(f, "{:016x}", x.to_bits()),
                 Const::Null => write!(f, "zeroinitializer"),
             },
         }

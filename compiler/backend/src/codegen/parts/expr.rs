@@ -7,8 +7,8 @@ use strbuf::StrBuf;
 
 use frontend::classes::ClassGraph;
 use frontend::translate::{
-    AComparator, BinaryExpr, BinaryOperation, CompareExpr, ConvertExpr, ConvertOperation, Expr,
-    IComparator, InvokeExpr, InvokeTarget, MonitorStateTransition, Op,
+    AComparator, BinaryExpr, BinaryOperation, CompareExpr, Const, ConvertExpr, ConvertOperation,
+    Expr, IComparator, InvokeExpr, InvokeTarget, MonitorStateTransition, NaNCmpMode, Op,
 };
 use frontend::types::Type;
 
@@ -255,26 +255,42 @@ impl<'a> ExprCodeGen<'a> {
             BinaryOperation::Sub => self.gen_expr_binary_simple("sub", binary_expr, dest)?,
             BinaryOperation::BitwiseAnd => self.gen_expr_binary_simple("and", binary_expr, dest)?,
             BinaryOperation::BitwiseOr => self.gen_expr_binary_simple("or", binary_expr, dest)?,
-            BinaryOperation::ShiftLeft => {
-                if let Dest::Assign(assign) = dest {
-                    let tmp_masked = self.var_id_gen.gen();
-                    writeln!(
-                        self.out,
-                        "  %t{} = and {} {}, 31",
-                        tmp_masked,
-                        tlt_type(&binary_expr.operand_right.get_type()),
-                        OpVal(&binary_expr.operand_right)
-                    )?;
-                    writeln!(
-                        self.out,
-                        "  {} = shl {} {}, %t{}",
-                        assign,
-                        tlt_type(&binary_expr.result_type),
-                        OpVal(&binary_expr.operand_left),
-                        tmp_masked
-                    )?;
-                }
+            BinaryOperation::BitwiseXor => self.gen_expr_binary_simple("xor", binary_expr, dest)?,
+            BinaryOperation::ShiftLeft => self.gen_expr_binary_shift("shl", binary_expr, dest)?,
+            BinaryOperation::ShiftRightLogical => {
+                self.gen_expr_binary_shift("lshr", binary_expr, dest)?
             }
+            BinaryOperation::ShiftRightArithmetic => {
+                self.gen_expr_binary_shift("ashr", binary_expr, dest)?
+            }
+        }
+        Ok(())
+    }
+
+    fn gen_expr_binary_shift(
+        &mut self,
+        operation: &str,
+        binary_expr: &BinaryExpr,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let tmp_masked = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = and {} {}, 31",
+                tmp_masked,
+                tlt_type(&binary_expr.operand_right.get_type()),
+                OpVal(&binary_expr.operand_right)
+            )?;
+            writeln!(
+                self.out,
+                "  {} = {} {} {}, %t{}",
+                assign,
+                operation,
+                tlt_type(&binary_expr.result_type),
+                OpVal(&binary_expr.operand_left),
+                tmp_masked
+            )?;
         }
         Ok(())
     }
@@ -308,22 +324,61 @@ impl<'a> ExprCodeGen<'a> {
                 self.gen_expr_compare_addr(comp, var1, var2, dest)
             }
             CompareExpr::LCmp(var1, var2) => self.gen_expr_compare_long(var1, var2, dest),
+            CompareExpr::FCmp(var1, var2, mode) => self.gen_expr_compare_fp(var1, var2, mode, dest),
+            CompareExpr::DCmp(var1, var2, mode) => self.gen_expr_compare_fp(var1, var2, mode, dest),
         }
     }
 
     fn gen_expr_convert(&mut self, conv_expr: &ConvertExpr, dest: Dest) -> Fallible<()> {
+        match conv_expr.operation {
+            ConvertOperation::IntToChar => {
+                self.gen_expr_convert_truncate_and_extend(&conv_expr.operand, "i8", false, dest)
+            }
+            ConvertOperation::IntToByte => {
+                self.gen_expr_convert_truncate_and_extend(&conv_expr.operand, "i8", true, dest)
+            }
+            ConvertOperation::IntToShort => {
+                self.gen_expr_convert_truncate_and_extend(&conv_expr.operand, "i16", true, dest)
+            }
+        }
+    }
+
+    fn gen_expr_convert_truncate_and_extend(
+        &mut self,
+        op: &Op,
+        via: &str,
+        sign: bool,
+        dest: Dest,
+    ) -> Fallible<()> {
         if let Dest::Assign(assign) = dest {
-            match conv_expr.operation {
-                ConvertOperation::IntToChar => {
-                    let tmp_trunc = self.var_id_gen.gen();
-                    writeln!(
-                        self.out,
-                        "  %t{} = trunc i32 {} to i8",
-                        tmp_trunc,
-                        OpVal(&conv_expr.operand)
-                    )?;
-                    writeln!(self.out, "  {} = zext i8 %t{} to i32", assign, tmp_trunc)?;
-                }
+            let op_type = tlt_type(&op.get_type());
+            let tmp_trunc = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = trunc {typ} {op} to {via}",
+                tmp_trunc,
+                typ = op_type,
+                op = OpVal(op),
+                via = via
+            )?;
+            if sign {
+                writeln!(
+                    self.out,
+                    "  {} = sext {via} %t{} to {typ}",
+                    assign,
+                    tmp_trunc,
+                    typ = op_type,
+                    via = via
+                )?;
+            } else {
+                writeln!(
+                    self.out,
+                    "  {} = zext {via} %t{} to {typ}",
+                    assign,
+                    tmp_trunc,
+                    typ = op_type,
+                    via = via
+                )?;
             }
         }
         Ok(())
@@ -371,13 +426,45 @@ impl<'a> ExprCodeGen<'a> {
                 Dest::Assign(DestAssign::Tmp(tmp_array_ptr)),
             )?;
 
+            let tmp_extend = self.var_id_gen.gen();
+            let load_assign = match ctyp {
+                Type::Boolean | Type::Byte | Type::Short | Type::Char => {
+                    DestAssign::Tmp(tmp_extend)
+                }
+                _ => assign.clone(),
+            };
+
             writeln!(
                 self.out,
                 "  {} = load {ctyp}, {ctyp}* %t{}",
-                assign,
+                load_assign,
                 tmp_array_ptr,
                 ctyp = component_type
             )?;
+
+            match ctyp {
+                Type::Boolean | Type::Byte | Type::Short => {
+                    writeln!(
+                        self.out,
+                        "   {} = sext {ctyp} %t{} to {vtyp}",
+                        assign,
+                        tmp_extend,
+                        vtyp = tlt_type(&ctyp),
+                        ctyp = component_type
+                    )?;
+                }
+                Type::Char => {
+                    writeln!(
+                        self.out,
+                        "   {} = zext {ctyp} %t{} to {vtyp}",
+                        assign,
+                        tmp_extend,
+                        vtyp = tlt_type(&ctyp),
+                        ctyp = component_type
+                    )?;
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
@@ -397,12 +484,28 @@ impl<'a> ExprCodeGen<'a> {
             Dest::Assign(DestAssign::Tmp(tmp_array_ptr)),
         )?;
 
+        let truncated = match ctyp {
+            Type::Boolean | Type::Byte | Type::Short | Type::Char => {
+                let tmp_trunc = self.var_id_gen.gen();
+                writeln!(
+                    self.out,
+                    "   %t{} = trunc {vtyp} {val} to {ctyp}",
+                    tmp_trunc,
+                    vtyp = tlt_type(&value.get_type()),
+                    val = OpVal(value),
+                    ctyp = component_type
+                )?;
+                format!("%t{}", tmp_trunc)
+            }
+            _ => OpVal(value).to_string(),
+        };
+
         writeln!(
             self.out,
-            "  store {ctyp} {}, {ctyp}* %t{}",
-            OpVal(value),
-            tmp_array_ptr,
-            ctyp = component_type
+            "  store {ctyp} {val}, {ctyp}* %t{aptr}",
+            ctyp = component_type,
+            val = truncated,
+            aptr = tmp_array_ptr,
         )?;
         Ok(())
     }
@@ -661,6 +764,76 @@ impl<'a> ExprCodeGen<'a> {
                 self.out,
                 "  {} = sub i32 %t{}, %t{}",
                 assign, tmp_gt_ext, tmp_lt_ext
+            )?;
+        }
+        Ok(())
+    }
+
+    fn gen_expr_compare_fp(
+        &mut self,
+        var1: &Op,
+        var2: &Op,
+        mode: &NaNCmpMode,
+        dest: Dest,
+    ) -> Fallible<()> {
+        if let Dest::Assign(assign) = dest {
+            let typ = tlt_type(&var1.get_type());
+
+            let tmp_is_gt = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = fcmp ogt {typ} {}, {}",
+                tmp_is_gt,
+                OpVal(var1),
+                OpVal(var2),
+                typ = typ
+            )?;
+
+            let tmp_is_eq = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = fcmp oeq {typ} {}, {}",
+                tmp_is_eq,
+                OpVal(var1),
+                OpVal(var2),
+                typ = typ
+            )?;
+
+            let tmp_is_lt = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = fcmp olt {} {}, {}",
+                tmp_is_lt,
+                OpVal(var1),
+                OpVal(var2),
+                typ = typ
+            )?;
+
+            let nan_op = match mode {
+                NaNCmpMode::Greater => Op::Const(Const::Int(1)),
+                NaNCmpMode::Less => Op::Const(Const::Int(-1)),
+            };
+
+            let tmp_lt_or_nan = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = select i1 %t{}, i32 -1, i32 {}",
+                tmp_lt_or_nan,
+                tmp_is_lt,
+                OpVal(&nan_op),
+            )?;
+
+            let tmp_eq_or_lt_or_nan = self.var_id_gen.gen();
+            writeln!(
+                self.out,
+                "  %t{} = select i1 %t{}, i32 0, i32 %t{}",
+                tmp_eq_or_lt_or_nan, tmp_is_eq, tmp_lt_or_nan,
+            )?;
+
+            writeln!(
+                self.out,
+                "  {} = select i1 %t{}, i32 1, i32 %t{}",
+                assign, tmp_is_gt, tmp_eq_or_lt_or_nan,
             )?;
         }
         Ok(())

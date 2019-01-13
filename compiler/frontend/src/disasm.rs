@@ -51,10 +51,16 @@ impl InstructionBlock {
                 | Instr::IfNe(offset)
                 | Instr::IfGe(offset)
                 | Instr::IfGt(offset)
+                | Instr::IfICmpLt(offset)
+                | Instr::IfICmpLe(offset)
+                | Instr::IfICmpEq(offset)
+                | Instr::IfICmpNe(offset)
                 | Instr::IfICmpGe(offset)
                 | Instr::IfICmpGt(offset)
-                | Instr::IfICmpLe(offset)
-                | Instr::IfACmpNe(offset) => {
+                | Instr::IfACmpEq(offset)
+                | Instr::IfACmpNe(offset)
+                | Instr::IfNull(offset)
+                | Instr::IfNonNull(offset) => {
                     let if_addr = (i64::from(curr_addr) + i64::from(offset)) as u32;
                     start_addrs.extend_from_slice(&[next_addr, if_addr]);
                     true
