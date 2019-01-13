@@ -19,51 +19,46 @@ pub enum PhiOperandSource {
     Block(BlockId),
 }
 
+#[derive(Debug)]
 pub struct PhiOperand {
-    pub op: Op,
+    pub opt: Option<Op>,
     pub src: PhiOperandSource,
 }
 
-pub struct PhiMap {
-    inner: BTreeMap<VarId, Option<Vec<PhiOperand>>>,
+pub struct PhiNode {
+    pub target: VarId,
+    pub operands: Vec<PhiOperand>,
 }
 
-impl PhiMap {
-    fn new() -> Self {
+impl PhiNode {
+    fn new(target: VarId) -> Self {
         Self {
-            inner: BTreeMap::new(),
+            target,
+            operands: vec![],
         }
     }
 
-    fn add(&mut self, target: &Op, operand: PhiOperand) {
-        if let Op::Var(target_var) = target {
-            if !target_var.0.can_unify_naive(&operand.op.get_type()) {
-                // mark as unusable
-                self.inner.insert(target_var.clone(), None);
+    fn add(&mut self, opt: Option<&Op>, src: PhiOperandSource) {
+        let operand;
+        if let Some(op) = opt {
+            if !self.target.0.can_unify_naive(&op.get_type()) {
+                operand = PhiOperand { opt: None, src };
             } else {
-                log::trace!(
-                    "adding binding {:?} from {:?} for variable {:?}",
-                    operand.op,
-                    operand.src,
-                    target_var
-                );
-
-                let entry = self
-                    .inner
-                    .entry(target_var.clone())
-                    .or_insert_with(|| Some(Vec::new()));
-
-                if let Some(ref mut operands) = entry {
-                    operands.push(operand);
-                }
+                operand = PhiOperand {
+                    opt: Some(op.clone()),
+                    src,
+                };
             }
+        } else {
+            operand = PhiOperand { opt: None, src };
         }
-    }
+        log::trace!(
+            "adding binding {:?} for variable {:?}",
+            operand,
+            self.target
+        );
 
-    pub fn iter(&self) -> impl Iterator<Item = (&VarId, &[PhiOperand])> {
-        self.inner
-            .iter()
-            .filter_map(|(var, opt)| opt.as_ref().map(|operands| (var, operands.as_slice())))
+        self.operands.push(operand);
     }
 }
 
@@ -126,13 +121,10 @@ impl BlockGraph {
         }
     }
 
-    pub fn phis(&self, block: &BasicBlock) -> PhiMap {
-        log::trace!(
-            "collecting phi nodes for block at address {}",
-            block.address
-        );
-        let mut phis = PhiMap::new();
-
+    fn incoming_frames(
+        &self,
+        block: &BasicBlock,
+    ) -> impl Iterator<Item = (PhiOperandSource, &StackAndLocals)> {
         let entry_frame = if block.address == BlockId::start() {
             Some((PhiOperandSource::Entry, &self.entry_state))
         } else {
@@ -146,34 +138,40 @@ impl BlockGraph {
             )
         });
 
-        for (src, frame) in incoming_frames.chain(entry_frame) {
-            log::trace!("matching up incoming frame (src={:?})", src);
-            for (i, out_var) in frame.stack.iter().enumerate() {
-                log::trace!("looking up incoming stack variable ({}={:?})", i, out_var);
-                if let Some(op) = block.incoming.stack.get(i) {
-                    phis.add(
-                        op,
-                        PhiOperand {
-                            op: out_var.clone(),
-                            src: src.clone(),
-                        },
-                    );
+        incoming_frames.chain(entry_frame)
+    }
+
+    pub fn phis(&self, block: &BasicBlock) -> impl Iterator<Item = PhiNode> {
+        log::trace!(
+            "collecting phi nodes for block at address {}",
+            block.address
+        );
+        let mut nodes = Vec::new();
+
+        for (i, in_op) in block.incoming.stack.iter().enumerate() {
+            if let Op::Var(in_var) = in_op {
+                let mut node = PhiNode::new(in_var.clone());
+                log::trace!("processing incoming stack variable ({}={:?})", i, in_var);
+                for (src, frame) in self.incoming_frames(block) {
+                    log::trace!("matching up incoming frame (src={:?})", src);
+                    node.add(frame.stack.get(i), src.clone());
                 }
-            }
-            for (i, out_var) in frame.locals.iter() {
-                log::trace!("looking up incoming local variable ({}={:?})", i, out_var);
-                if let Some(op) = block.incoming.locals.get(i) {
-                    phis.add(
-                        op,
-                        PhiOperand {
-                            op: out_var.clone(),
-                            src: src.clone(),
-                        },
-                    );
-                }
+                nodes.push(node);
             }
         }
 
-        phis
+        for (i, in_op) in block.incoming.locals.iter() {
+            if let Op::Var(in_var) = in_op {
+                let mut node = PhiNode::new(in_var.clone());
+                log::trace!("processing incoming local variable ({}={:?})", i, in_var);
+                for (src, frame) in self.incoming_frames(block) {
+                    log::trace!("matching up incoming frame (src={:?})", src);
+                    node.add(frame.locals.get(i), src.clone());
+                }
+                nodes.push(node);
+            }
+        }
+
+        nodes.into_iter()
     }
 }

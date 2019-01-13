@@ -1,10 +1,10 @@
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::sync::Arc;
 
 use classfile::{ClassFile, ConstantPool, Method};
 use failure::Fallible;
 
-use frontend::blocks::{BlockGraph, PhiOperandSource};
+use frontend::blocks::{BlockGraph, PhiOperand, PhiOperandSource};
 use frontend::classes::ClassGraph;
 use frontend::translate::{BasicBlock, BranchStub, Expr, Statement, Switch};
 
@@ -141,21 +141,37 @@ impl<'a> MethodCodeGen<'a> {
     }
 
     fn gen_phi_nodes(&mut self, block: &BasicBlock, blocks: &BlockGraph) -> Fallible<()> {
-        let phis = blocks.phis(block);
-        for (var, bindings) in phis.iter() {
-            write!(self.out, "  %v{} = phi {} ", var.1, tlt_type(&var.0))?;
-            for (i, phi_operand) in bindings.iter().enumerate() {
+        struct GenPhiOp<'a>(&'a PhiOperand);
+
+        impl<'a> fmt::Display for GenPhiOp<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("[ ")?;
+                match self.0.opt {
+                    Some(ref op) => write!(f, "{}", OpVal(op))?,
+                    None => f.write_str("undef")?,
+                }
+                f.write_str(", ")?;
+                match self.0.src {
+                    PhiOperandSource::Entry => f.write_str("%entry")?,
+                    PhiOperandSource::Block(addr) => write!(f, "%B{}", addr)?,
+                }
+                f.write_str(" ]")?;
+                Ok(())
+            }
+        }
+
+        for phi in blocks.phis(block) {
+            write!(
+                self.out,
+                "  %v{} = phi {} ",
+                phi.target.1,
+                tlt_type(&phi.target.0)
+            )?;
+            for (i, phi_operand) in phi.operands.iter().enumerate() {
                 if i > 0 {
                     write!(self.out, ", ")?;
                 }
-                match phi_operand.src {
-                    PhiOperandSource::Entry => {
-                        write!(self.out, "[ {}, %entry ]", OpVal(&phi_operand.op))?;
-                    }
-                    PhiOperandSource::Block(addr) => {
-                        write!(self.out, "[ {}, %B{} ]", OpVal(&phi_operand.op), addr)?;
-                    }
-                }
+                write!(self.out, "{}", GenPhiOp(phi_operand))?;
             }
             writeln!(self.out)?;
         }
