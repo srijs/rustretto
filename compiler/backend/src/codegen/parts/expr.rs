@@ -802,7 +802,7 @@ impl<'a> ExprCodeGen<'a> {
             let tmp_is_lt = self.var_id_gen.gen();
             writeln!(
                 self.out,
-                "  %t{} = fcmp olt {} {}, {}",
+                "  %t{} = fcmp olt {typ} {}, {}",
                 tmp_is_lt,
                 OpVal(var1),
                 OpVal(var2),
