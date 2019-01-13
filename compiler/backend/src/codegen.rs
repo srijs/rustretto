@@ -232,22 +232,16 @@ impl ClassCodeGen {
         let method_name = consts.get_utf8(method.name_index).unwrap();
         write!(
             self.out,
-            "\ndeclare {return_type} @{mangled_name}(",
+            "\ndeclare {return_type} @{mangled_name}({args})",
             return_type = tlt_return_type(&method.descriptor.ret),
             mangled_name = mangle::mangle_method_name(
                 class_name,
                 method_name,
                 &method.descriptor.ret,
                 &method.descriptor.params
-            )
+            ),
+            args = args.iter().gen_comma_sep(|arg| tlt_type(&arg.0))
         )?;
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                write!(self.out, ", ")?;
-            }
-            write!(self.out, "{}", tlt_type(&arg.0))?;
-        }
-        writeln!(self.out, ")")?;
         Ok(())
     }
 
@@ -263,22 +257,16 @@ impl ClassCodeGen {
         let method_name = consts.get_utf8(method.name_index).unwrap();
         write!(
             self.out,
-            "\ndefine {return_type} @{mangled_name}(",
+            "\ndefine {return_type} @{mangled_name}({args}) {{",
             return_type = tlt_return_type(&method.descriptor.ret),
             mangled_name = mangle::mangle_method_name(
                 class_name,
                 method_name,
                 &method.descriptor.ret,
                 &method.descriptor.params
-            )
+            ),
+            args = args.iter().gen_comma_sep(|arg| tlt_type(&arg.0))
         )?;
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                write!(self.out, ", ")?;
-            }
-            write!(self.out, "{}", tlt_type(&arg.0))?;
-        }
-        writeln!(self.out, ") {{")?;
         writeln!(self.out, "  call void @_Jrt_abstract() noreturn")?;
         writeln!(self.out, "  unreachable")?;
         writeln!(self.out, "}}")?;

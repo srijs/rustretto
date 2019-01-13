@@ -44,6 +44,14 @@ impl TmpVarIdGen {
     }
 }
 
+pub struct GenOpWithType<'a>(pub &'a Op);
+
+impl<'a> fmt::Display for GenOpWithType<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", tlt_type(&self.0.get_type()), OpVal(&self.0))
+    }
+}
+
 pub struct OpVal<'a>(pub &'a Op);
 
 impl<'a> fmt::Display for OpVal<'a> {
@@ -104,6 +112,39 @@ impl<'a> fmt::Display for GenFunctionType<'a> {
             f.write_str(tlt_field_type(field))?;
         }
         f.write_str(")")?;
+        Ok(())
+    }
+}
+
+pub trait GenIterExt: Iterator {
+    fn gen_comma_sep<F, D>(self, map: F) -> GenCommaSep<Self, F>
+    where
+        Self: Sized,
+        F: Fn(<Self as Iterator>::Item) -> D,
+        D: fmt::Display,
+    {
+        GenCommaSep(std::cell::RefCell::new(self), map)
+    }
+}
+
+impl<I> GenIterExt for I where I: Iterator {}
+
+pub struct GenCommaSep<I: Iterator, F>(std::cell::RefCell<I>, F);
+
+impl<I: Iterator, F, D> fmt::Display for GenCommaSep<I, F>
+where
+    F: Fn(I::Item) -> D,
+    D: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut started = false;
+        while let Some(item) = self.0.borrow_mut().next() {
+            if started {
+                f.write_str(", ")?;
+            }
+            started = true;
+            fmt::Display::fmt(&(self.1)(item), f)?;
+        }
         Ok(())
     }
 }

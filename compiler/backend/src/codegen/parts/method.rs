@@ -38,24 +38,20 @@ impl<'a> MethodCodeGen<'a> {
             .get_utf8(self.class.get_this_class().name_index)
             .unwrap();
         let method_name = consts.get_utf8(method.name_index).unwrap();
-        write!(
+        let mangled_name = mangle::mangle_method_name(
+            class_name,
+            method_name,
+            &method.descriptor.ret,
+            &method.descriptor.params,
+        );
+        let gen_args = blocks.entry().locals.iter();
+        writeln!(
             self.out,
-            "\ndefine {return_type} @{mangled_name}(",
+            "\ndefine {return_type} @{mangled_name}({args}) {{",
             return_type = tlt_return_type(&method.descriptor.ret),
-            mangled_name = mangle::mangle_method_name(
-                class_name,
-                method_name,
-                &method.descriptor.ret,
-                &method.descriptor.params
-            )
+            mangled_name = mangled_name,
+            args = gen_args.gen_comma_sep(|(_, op)| GenOpWithType(op))
         )?;
-        for (i, (_, var)) in blocks.entry().locals.iter().enumerate() {
-            if i > 0 {
-                write!(self.out, ", ")?;
-            }
-            write!(self.out, "{} {}", tlt_type(&var.get_type()), OpVal(var))?;
-        }
-        writeln!(self.out, ") {{")?;
         writeln!(self.out, "entry:")?;
         writeln!(self.out, "  br label %B0")?;
         for block in blocks.blocks() {
@@ -161,19 +157,13 @@ impl<'a> MethodCodeGen<'a> {
         }
 
         for phi in blocks.phis(block) {
-            write!(
+            writeln!(
                 self.out,
-                "  %v{} = phi {} ",
+                "  %v{} = phi {} {}",
                 phi.target.1,
-                tlt_type(&phi.target.0)
+                tlt_type(&phi.target.0),
+                phi.operands.iter().gen_comma_sep(GenPhiOp)
             )?;
-            for (i, phi_operand) in phi.operands.iter().enumerate() {
-                if i > 0 {
-                    write!(self.out, ", ")?;
-                }
-                write!(self.out, "{}", GenPhiOp(phi_operand))?;
-            }
-            writeln!(self.out)?;
         }
         Ok(())
     }

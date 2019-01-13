@@ -197,35 +197,26 @@ impl<'a> ExprCodeGen<'a> {
             write!(self.out, "  ")?;
         }
 
-        write!(
-            self.out,
-            "call {return_type} {fptr}(",
-            fptr = fptr,
-            return_type = tlt_return_type(&expr.method.descriptor.ret)
-        )?;
-
         let mut args = vec![];
 
         match expr.target {
             InvokeTarget::Static => {}
-            InvokeTarget::Special(ref var) => args.push(format!("%ref {}", OpVal(var))),
-            InvokeTarget::Virtual(ref var) => args.push(format!("%ref {}", OpVal(var))),
-            InvokeTarget::Interface(ref var) => args.push(format!("%ref {}", OpVal(var))),
+            InvokeTarget::Special(ref var) => args.push(var),
+            InvokeTarget::Virtual(ref var) => args.push(var),
+            InvokeTarget::Interface(ref var) => args.push(var),
         };
 
-        for var in expr.args.iter() {
-            args.push(format!("{} {}", tlt_type(&var.get_type()), OpVal(&var)));
+        for arg in expr.args.iter() {
+            args.push(&arg);
         }
 
-        for (idx, arg) in args.iter().enumerate() {
-            if idx > 0 {
-                write!(self.out, ", {}", arg)?;
-            } else {
-                write!(self.out, "{}", arg)?;
-            }
-        }
-
-        writeln!(self.out, ")")?;
+        writeln!(
+            self.out,
+            "call {return_type} {fptr}({args})",
+            fptr = fptr,
+            return_type = tlt_return_type(&expr.method.descriptor.ret),
+            args = args.iter().gen_comma_sep(|arg| GenOpWithType(arg))
+        )?;
         Ok(())
     }
 
